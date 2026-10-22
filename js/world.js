@@ -5,7 +5,7 @@
 
   const ROW_STEP = 2;         // a new row of trees every 2 meters
   const VIEW_AHEAD = 48;      // generate this far in front of the player
-  const KEEP_BEHIND = 6;      // forget rows this far behind
+  const KEEP_BEHIND = 22;     // forget rows this far behind
   const PLAY_HALF_WIDTH = 11.5; // the player can move between -11.5 and +11.5
   const START_CLEAR = 30;     // no obstacles for the first meters
   const TREE_SIZE = 1.7;      // all trees are scaled up by this much

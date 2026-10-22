@@ -42,10 +42,15 @@
   const ambient = new THREE.AmbientLight(0x2a3450, AMBIENT);
   scene.add(ambient);
 
+  // The arm holds the flashlight. It turns together with the head when you look back.
+  const arm = new THREE.Object3D();
+  arm.rotation.order = 'YXZ';
+  body.add(arm);
+
   const flashlight = new THREE.SpotLight(0xfff0cc, 2.4, 26, 0.5, 0.5, 1);
   flashlight.position.set(0.25, -0.25, 0);
-  body.add(flashlight);
-  body.add(flashlight.target);
+  arm.add(flashlight);
+  arm.add(flashlight.target);
   flashlight.target.position.set(0, -1.6, -10);
 
   const tex = Textures.build();
@@ -57,9 +62,9 @@
   (function buildViewmodel() {
     const metal = new THREE.MeshBasicMaterial({ color: 0x2a2a2e });
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x6a5a50 });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6), metal);
-    body.rotation.x = Math.PI / 2;
-    viewmodel.add(body);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6), metal);
+    barrel.rotation.x = Math.PI / 2;
+    viewmodel.add(barrel);
     const head = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.034, 0.07, 6), metal);
     head.rotation.x = Math.PI / 2;
     head.position.z = -0.15;
@@ -74,12 +79,12 @@
     thumb.position.set(-0.045, 0.02, 0.0);
     thumb.rotation.y = 0.3;
     viewmodel.add(thumb);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.3), new THREE.MeshBasicMaterial({ color: 0x1c2230 }));
-    arm.position.set(0.03, -0.04, 0.22);
-    viewmodel.add(arm);
+    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.3), new THREE.MeshBasicMaterial({ color: 0x1c2230 }));
+    sleeve.position.set(0.03, -0.04, 0.22);
+    viewmodel.add(sleeve);
     viewmodel.position.set(0.24, -0.24, -0.42);
     viewmodel.rotation.set(0.08, 0.12, 0);
-    body.add(viewmodel);
+    arm.add(viewmodel);
   })();
 
   // ---- sizing --------------------------------------------------------------
@@ -328,7 +333,7 @@
     Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
     // Every now and then you can't help it: you look back for about 2 seconds,
-    // running blind while the flashlight still points forward.
+    // still running forward, with the flashlight pointing at the dark behind you.
     if (lookT < 0) {
       lookTimer -= dt;
       if (lookTimer <= 0 && player.stumble <= 0) {
@@ -381,8 +386,10 @@
     // head turn: looking back over the shoulder, or the last turn when it catches you
     camera.rotation.y = lookDir * lookAmount * 2.7 + caughtYaw;
     camera.rotation.x = lookAmount * -0.1;
-    // behind you there is nothing but darkness
-    ambient.intensity = AMBIENT * (1 - lookAmount);
+    // the flashlight swings around with your head, so you see a little of what's behind
+    arm.rotation.y = lookDir * lookAmount * 2.7;
+    arm.rotation.x = lookAmount * -0.1;
+    ambient.intensity = AMBIENT * (1 - lookAmount * 0.5);
 
     // flashlight swings with your arm
     const swayX = Math.sin(bobPhase) * 0.012 * speedNorm;
@@ -453,5 +460,5 @@
   requestAnimationFrame(frame);
 
   // handy for testing from the browser console
-  window.__game = { lookNow: () => { lookTimer = 0; }, player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
+  window.__game = { lookNow: () => { lookTimer = 0; gap = MAX_GAP; }, look: () => lookAmount, player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
 })();
