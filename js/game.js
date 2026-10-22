@@ -28,17 +28,24 @@
   scene.background = new THREE.Color(0x020306);
   scene.fog = new THREE.Fog(0x020306, 3, 21);
 
+  // The runner's body. The camera (head) is a child, so it can turn to look back
+  // while the flashlight and hand keep pointing forward.
+  const body = new THREE.Object3D();
+  body.rotation.order = 'YXZ';
+  scene.add(body);
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 40);
   camera.rotation.order = 'YXZ';
-  scene.add(camera);
+  body.add(camera);
 
   // Almost no light except the flashlight.
-  scene.add(new THREE.AmbientLight(0x2a3450, 0.45));
+  const AMBIENT = 0.45;
+  const ambient = new THREE.AmbientLight(0x2a3450, AMBIENT);
+  scene.add(ambient);
 
   const flashlight = new THREE.SpotLight(0xfff0cc, 2.4, 26, 0.5, 0.5, 1);
   flashlight.position.set(0.25, -0.25, 0);
-  camera.add(flashlight);
-  camera.add(flashlight.target);
+  body.add(flashlight);
+  body.add(flashlight.target);
   flashlight.target.position.set(0, -1.6, -10);
 
   const tex = Textures.build();
@@ -72,7 +79,7 @@
     viewmodel.add(arm);
     viewmodel.position.set(0.24, -0.24, -0.42);
     viewmodel.rotation.set(0.08, 0.12, 0);
-    camera.add(viewmodel);
+    body.add(viewmodel);
   })();
 
   // ---- sizing --------------------------------------------------------------
@@ -191,6 +198,7 @@
   let heartTimer = 0, cricketTimer = 2;
   let runTime = 0;
   let caughtYaw = 0;
+  let lookTimer = 0, lookT = -1, lookDir = 1, lookAmount = 0;
 
   function setState(s) {
     state = s;
@@ -208,6 +216,7 @@
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
     heartTimer = 0;
     runTime = 0; caughtYaw = 0;
+    lookTimer = 10 + Math.random() * 8; lookT = -1; lookAmount = 0;
     world.reset();
     world.update(0);
     ui.staticCanvas.style.opacity = '0';
@@ -318,6 +327,27 @@
     // the crickets stop when it's near
     Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
+    // Every now and then you can't help it: you look back for about 2 seconds,
+    // running blind while the flashlight still points forward.
+    if (lookT < 0) {
+      lookTimer -= dt;
+      if (lookTimer <= 0 && player.stumble <= 0) {
+        lookT = 0;
+        lookDir = Math.random() < 0.5 ? 1 : -1;
+        Sfx.heartbeat(0.6);
+      }
+    } else {
+      lookT += dt;
+      const TURN = 0.35, LOOK = 2.0;
+      const k = lookT < TURN ? lookT / TURN : lookT > LOOK - TURN ? (LOOK - lookT) / TURN : 1;
+      lookAmount = Math.max(0, k * k * (3 - 2 * k));
+      if (lookT >= LOOK) {
+        lookT = -1;
+        lookAmount = 0;
+        lookTimer = 10 + Math.random() * 12;
+      }
+    }
+
     // flashlight trouble when it gets close
     if (flicker > 0) flicker -= dt;
     else if (gap < 11 && Math.random() < dt * (11 - gap) * 0.25) flicker = 0.05 + Math.random() * 0.18;
@@ -344,10 +374,15 @@
     shake = Math.max(0, shake - dt);
     const sx = (Math.random() - 0.5) * shake * 0.2, sy = (Math.random() - 0.5) * shake * 0.2;
 
-    camera.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy, -player.d);
-    camera.rotation.y = -player.vx * 0.03 + caughtYaw;
-    camera.rotation.x = -0.06 + Math.sin(bobPhase * 2) * 0.008 * speedNorm;
-    camera.rotation.z = -player.vx * 0.01 + Math.sin(bobPhase) * 0.012 * speedNorm;
+    body.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy, -player.d);
+    body.rotation.y = -player.vx * 0.03;
+    body.rotation.x = -0.06 + Math.sin(bobPhase * 2) * 0.008 * speedNorm;
+    body.rotation.z = -player.vx * 0.01 + Math.sin(bobPhase) * 0.012 * speedNorm;
+    // head turn: looking back over the shoulder, or the last turn when it catches you
+    camera.rotation.y = lookDir * lookAmount * 2.7 + caughtYaw;
+    camera.rotation.x = lookAmount * -0.1;
+    // behind you there is nothing but darkness
+    ambient.intensity = AMBIENT * (1 - lookAmount);
 
     // flashlight swings with your arm
     const swayX = Math.sin(bobPhase) * 0.012 * speedNorm;
@@ -377,7 +412,8 @@
     } else if (state === 'caught') {
       // You start to turn around... and that's all you ever see.
       player.speed *= 0.9;
-      caughtYaw = Math.min(stateTime / 0.35, 1) * 2.4;
+      // (if you were already looking back, you just stay facing the dark)
+      caughtYaw = lookAmount > 0 ? 0 : Math.min(stateTime / 0.35, 1) * 2.4;
       shake = 0.6;
       if (stateTime > 0.25) {
         ui.staticCanvas.style.opacity = '1';
@@ -417,5 +453,5 @@
   requestAnimationFrame(frame);
 
   // handy for testing from the browser console
-  window.__game = { player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
+  window.__game = { lookNow: () => { lookTimer = 0; }, player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
 })();

@@ -8,6 +8,7 @@
   const KEEP_BEHIND = 6;      // forget rows this far behind
   const PLAY_HALF_WIDTH = 11.5; // the player can move between -11.5 and +11.5
   const START_CLEAR = 30;     // no obstacles for the first meters
+  const TREE_SIZE = 1.7;      // all trees are scaled up by this much
 
   // ---- geometry helpers -------------------------------------------------
 
@@ -153,6 +154,7 @@
       }
 
       function add(kind, x, scale) {
+        if (kind === 'pine' || kind === 'dead') scale *= TREE_SIZE;
         items.push({
           kind: kind,
           x: x,
@@ -166,7 +168,7 @@
 
       // Walls of trees at the edges, so the forest feels endless sideways.
       for (let side = -1; side <= 1; side += 2) {
-        add('pine', side * (12.6 + Math.random() * 1.2), 0.9 + Math.random() * 0.5);
+        add('pine', side * (13 + Math.random() * 1.2), 0.9 + Math.random() * 0.5);
         if (Math.random() < 0.7) add(Math.random() < 0.8 ? 'pine' : 'dead', side * (15 + Math.random() * 4), 0.9 + Math.random() * 0.6);
       }
 
@@ -180,11 +182,11 @@
           const x = (Math.random() * 2 - 1) * PLAY_HALF_WIDTH;
           const kind = Math.random() < 0.75 ? 'pine' : 'dead';
           const s = 0.8 + Math.random() * 0.5;
-          const r = kinds[kind].radius * s;
+          const r = kinds[kind].radius * s * TREE_SIZE;
           if (!free(x, r)) continue;
           let clash = false;
           for (let i = 0; i < items.length; i++) {
-            if (Math.abs(items[i].x - x) < 1.4) { clash = true; break; }
+            if (Math.abs(items[i].x - x) < 2.2) { clash = true; break; }
           }
           if (clash) continue;
           add(kind, x, s);
