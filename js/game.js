@@ -188,7 +188,7 @@
   const player = { x: 0, d: 0, vx: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
   let gap = START_GAP;
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
-  let heartTimer = 0, breathTimer = 0, inhaling = false, cricketTimer = 2;
+  let heartTimer = 0, cricketTimer = 2;
   let runTime = 0;
   let caughtYaw = 0;
 
@@ -206,7 +206,7 @@
     player.stamina = 1; player.stumble = 0; player.hitCooldown = 0;
     gap = START_GAP;
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
-    heartTimer = 0; breathTimer = 0.4; inhaling = false;
+    heartTimer = 0;
     runTime = 0; caughtYaw = 0;
     world.reset();
     world.update(0);
@@ -287,9 +287,6 @@
       player.speed *= 0.25;
       shake = 0.5;
       Sfx.hit();
-      Sfx.gasp();
-      breathTimer = 0.45;
-      inhaling = true;
     }
 
     // The thing behind you. It waits a moment, then never stops.
@@ -312,18 +309,6 @@
       heartTimer = 1.1 - close * 0.72;
       Sfx.heartbeat(0.08 + close * 0.55);
     }
-    // Scared, shaky breathing: faster and louder when it's close or you're sprinting.
-    const effort = Math.max(close, sprinting ? 0.6 : 0.25, player.stumble > 0 ? 0.8 : 0);
-    breathTimer -= dt;
-    if (breathTimer <= 0) {
-      inhaling = !inhaling;
-      const dur = (inhaling ? 0.62 : 0.52) - effort * 0.3;
-      const vol = 0.75 + effort * 0.55;
-      if (inhaling) Sfx.breathIn(dur, vol, close);
-      else Sfx.breathOut(dur, vol, close);
-      breathTimer = dur + 0.03 + Math.random() * 0.08;
-    }
-
     // the crickets stop when it's near
     Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
