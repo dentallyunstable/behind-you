@@ -188,7 +188,7 @@
   const player = { x: 0, d: 0, vx: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
   let gap = START_GAP;
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
-  let heartTimer = 0, chaserTimer = 0, snapTimer = 3;
+  let heartTimer = 0, chaserTimer = 0, snapTimer = 3, breathTimer = 0, inhaling = false, chaserFoot = 0;
   let runTime = 0;
   let caughtYaw = 0;
 
@@ -206,7 +206,7 @@
     player.stamina = 1; player.stumble = 0; player.hitCooldown = 0;
     gap = START_GAP;
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
-    heartTimer = 0; chaserTimer = 0; snapTimer = 2;
+    heartTimer = 0; chaserTimer = 0; snapTimer = 2; breathTimer = 0.4; inhaling = false; chaserFoot = 0;
     runTime = 0; caughtYaw = 0;
     world.reset();
     world.update(0);
@@ -218,12 +218,13 @@
     resetRun();
     placeStickIdle();
     setState('play');
-    Sfx.setWind(0.05);
+    Sfx.setAmbience(0.9);
   }
 
   function caught() {
     setState('caught');
     Sfx.caught();
+    Sfx.setAmbience(0);
     stick.id = null; stick.x = stick.y = 0;
   }
 
@@ -234,7 +235,7 @@
     ui.best.textContent = 'Furthest: ' + best + ' m';
     showBestMenu();
     setState('over');
-    Sfx.setWind(0.02);
+    Sfx.setAmbience(0.6);
   }
 
   // ---- static noise (only drawn while getting caught) ------------------------
@@ -286,6 +287,9 @@
       player.speed *= 0.25;
       shake = 0.5;
       Sfx.hit();
+      Sfx.gasp();
+      breathTimer = 0.45;
+      inhaling = true;
     }
 
     // The thing behind you. It waits a moment, then never stops.
@@ -308,16 +312,33 @@
       heartTimer = 1.1 - close * 0.72;
       Sfx.heartbeat(0.08 + close * 0.55);
     }
+    // Its heavy, slightly limping steps: always audible, louder the closer it gets.
     chaserTimer -= dt;
     if (chaserTimer <= 0 && runTime > 2.5) {
-      chaserTimer = 0.3 + Math.random() * 0.06;
-      Sfx.chaserStep(Math.pow(close, 1.6) * 0.9 + 0.02);
+      chaserFoot = 1 - chaserFoot;
+      chaserTimer = (chaserFoot ? 0.31 : 0.44) + Math.random() * 0.04;
+      Sfx.chaserStep(0.22 + Math.pow(close, 1.3) * 0.78, close);
     }
     snapTimer -= dt;
     if (snapTimer <= 0) {
       snapTimer = 1.5 + Math.random() * 5 * (1 - close * 0.8);
-      Sfx.snap(0.08 + close * 0.4);
+      Sfx.snap(0.18 + close * 0.5, 1 - close);
     }
+
+    // Scared, shaky breathing: faster and louder when it's close or you're sprinting.
+    const effort = Math.max(close, sprinting ? 0.6 : 0.25, player.stumble > 0 ? 0.8 : 0);
+    breathTimer -= dt;
+    if (breathTimer <= 0) {
+      inhaling = !inhaling;
+      const dur = (inhaling ? 0.62 : 0.52) - effort * 0.3;
+      const vol = 0.1 + effort * 0.22;
+      if (inhaling) Sfx.breathIn(dur, vol, close);
+      else Sfx.breathOut(dur, vol, close);
+      breathTimer = dur + 0.03 + Math.random() * 0.08;
+    }
+
+    // the crickets stop when it's near
+    Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
     // flashlight trouble when it gets close
     if (flicker > 0) flicker -= dt;
