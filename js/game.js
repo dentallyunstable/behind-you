@@ -188,7 +188,7 @@
   const player = { x: 0, d: 0, vx: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
   let gap = START_GAP;
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
-  let heartTimer = 0, chaserTimer = 0, snapTimer = 3, breathTimer = 0, inhaling = false, chaserFoot = 0;
+  let heartTimer = 0, breathTimer = 0, inhaling = false, cricketTimer = 2;
   let runTime = 0;
   let caughtYaw = 0;
 
@@ -206,7 +206,7 @@
     player.stamina = 1; player.stumble = 0; player.hitCooldown = 0;
     gap = START_GAP;
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
-    heartTimer = 0; chaserTimer = 0; snapTimer = 2; breathTimer = 0.4; inhaling = false; chaserFoot = 0;
+    heartTimer = 0; breathTimer = 0.4; inhaling = false;
     runTime = 0; caughtYaw = 0;
     world.reset();
     world.update(0);
@@ -312,26 +312,13 @@
       heartTimer = 1.1 - close * 0.72;
       Sfx.heartbeat(0.08 + close * 0.55);
     }
-    // Its heavy, slightly limping steps: always audible, louder the closer it gets.
-    chaserTimer -= dt;
-    if (chaserTimer <= 0 && runTime > 2.5) {
-      chaserFoot = 1 - chaserFoot;
-      chaserTimer = (chaserFoot ? 0.31 : 0.44) + Math.random() * 0.04;
-      Sfx.chaserStep(0.22 + Math.pow(close, 1.3) * 0.78, close);
-    }
-    snapTimer -= dt;
-    if (snapTimer <= 0) {
-      snapTimer = 1.5 + Math.random() * 5 * (1 - close * 0.8);
-      Sfx.snap(0.18 + close * 0.5, 1 - close);
-    }
-
     // Scared, shaky breathing: faster and louder when it's close or you're sprinting.
     const effort = Math.max(close, sprinting ? 0.6 : 0.25, player.stumble > 0 ? 0.8 : 0);
     breathTimer -= dt;
     if (breathTimer <= 0) {
       inhaling = !inhaling;
       const dur = (inhaling ? 0.62 : 0.52) - effort * 0.3;
-      const vol = 0.1 + effort * 0.22;
+      const vol = 0.75 + effort * 0.55;
       if (inhaling) Sfx.breathIn(dur, vol, close);
       else Sfx.breathOut(dur, vol, close);
       breathTimer = dur + 0.03 + Math.random() * 0.08;
@@ -413,6 +400,13 @@
     } else if (state === 'menu') {
       world.update(player.d);
       bobPhase += dt * 0.6;
+    }
+
+    // now and then, one cricket far away
+    cricketTimer -= dt;
+    if (cricketTimer <= 0) {
+      cricketTimer = 3 + Math.random() * 4;
+      if (state !== 'caught') Sfx.cricket();
     }
 
     if (state !== 'over') updateCamera(dt);
