@@ -7,6 +7,7 @@
   let noiseBuf = null;
   let cricketGain = null;
   let ambience = 0;
+  let breathBuf = null, breathSrc = null, breathGain = null;
   let chirpBufs = [];
 
   function init() {
@@ -42,6 +43,17 @@
     far.frequency.value = 4500;
     cricketGain.connect(far);
     far.connect(master);
+
+    // Breathing recording (embedded in js/breathing-data.js so it also works from a local file)
+    breathGain = ctx.createGain();
+    breathGain.gain.value = 0.35;
+    breathGain.connect(master);
+    if (window.BREATHING_B64) {
+      const bin = atob(window.BREATHING_B64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      ctx.decodeAudioData(bytes.buffer, function (b) { breathBuf = b; }, function () {});
+    }
   }
 
   function now() { return ctx ? ctx.currentTime : 0; }
@@ -120,74 +132,6 @@
     o.stop(t + dur + 0.05);
   }
 
-  // One breath (in or out). "fear" 0..1 makes it shakier, and adds a whimper.
-  function breath(inhale, dur, vol, fear) {
-    if (!ctx || !(vol > 0.0005)) return;
-    const t = now();
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuf;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 350;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = inhale ? 0.8 : 0.6;
-    if (inhale) {
-      bp.frequency.setValueAtTime(1300, t);
-      bp.frequency.linearRampToValueAtTime(2100, t + dur);
-    } else {
-      bp.frequency.setValueAtTime(1000, t);
-      bp.frequency.linearRampToValueAtTime(650, t + dur);
-    }
-
-    // envelope: inhales swell slowly, exhales push out fast
-    const env = ctx.createGain();
-    const peakAt = t + dur * (inhale ? 0.6 : 0.2);
-    env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(vol, peakAt);
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-    // the shake: the breath trembles in uneven little pulses
-    const shake = ctx.createGain();
-    shake.gain.setValueAtTime(1, t);
-    const depth = 0.35 + fear * 0.55;
-    for (let s = t; s < t + dur; s += 0.03 + Math.random() * 0.04) {
-      shake.gain.linearRampToValueAtTime(1 - depth * Math.random(), s);
-    }
-
-    src.connect(hp);
-    hp.connect(bp);
-    bp.connect(env);
-    env.connect(shake);
-    shake.connect(master);
-    src.start(t, Math.random() * 1.5, dur + 0.05);
-
-    // a quiet, trembling whimper in some of the scared exhales
-    if (!inhale && fear > 0.45 && Math.random() < 0.5) {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      const f0 = 210 + Math.random() * 60;
-      o.frequency.setValueAtTime(f0, t);
-      for (let s = t; s < t + dur; s += 0.04) {
-        o.frequency.linearRampToValueAtTime(f0 * (0.94 + Math.random() * 0.1), s);
-      }
-      o.frequency.linearRampToValueAtTime(f0 * 0.8, t + dur);
-      const vf = ctx.createBiquadFilter();
-      vf.type = 'bandpass';
-      vf.frequency.value = 750;
-      vf.Q.value = 3;
-      const vg = ctx.createGain();
-      vg.gain.setValueAtTime(0.0001, t);
-      vg.gain.exponentialRampToValueAtTime(vol * 0.35 * fear, t + dur * 0.25);
-      vg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(vf);
-      vf.connect(vg);
-      vg.connect(shake);
-      o.start(t);
-      o.stop(t + dur + 0.05);
-    }
-  }
-
   window.Sfx = {
     init: init,
     // crickets volume (they go quiet when it's close)
@@ -201,9 +145,24 @@
       noise(0.09, 'bandpass', 900 + Math.random() * 600, 0.8, 0.08);
       noise(0.06, 'lowpass', 200, 1, 0.1);
     },
-    breathIn: function (dur, vol, fear) { breath(true, dur, vol, fear); },
-    breathOut: function (dur, vol, fear) { breath(false, dur, vol, fear); },
-    gasp: function () { breath(true, 0.3, 1.4, 1); },
+    // Breathing: the supplied recording, looped. level 0..1 sets how loud/fast it is.
+    startBreathing: function () {
+      if (!ctx || !breathBuf || breathSrc) return;
+      breathSrc = ctx.createBufferSource();
+      breathSrc.buffer = breathBuf;
+      breathSrc.loop = true;
+      breathSrc.connect(breathGain);
+      breathSrc.start(0, Math.random() * 5);
+    },
+    stopBreathing: function () {
+      if (breathSrc) { try { breathSrc.stop(); } catch (e) { /* already stopped */ } breathSrc = null; }
+    },
+    setBreathing: function (level) {
+      if (!breathGain) return;
+      const t = now();
+      breathGain.gain.setTargetAtTime(0.35 + level * 0.65, t, 0.3);
+      if (breathSrc) breathSrc.playbackRate.setTargetAtTime(0.95 + level * 0.2, t, 0.5);
+    },
     // A single cricket somewhere far off in the dark
     cricket: function () {
       if (!ctx) return;

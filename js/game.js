@@ -224,6 +224,7 @@
   function caught() {
     setState('caught');
     Sfx.caught();
+    Sfx.stopBreathing();
     Sfx.setAmbience(0);
     stick.id = null; stick.x = stick.y = 0;
   }
@@ -309,6 +310,11 @@
       heartTimer = 1.1 - close * 0.72;
       Sfx.heartbeat(0.08 + close * 0.55);
     }
+    // Breathing gets louder and faster when it's close, you're sprinting, or you just hit a tree.
+    const effort = Math.max(close, sprinting ? 0.6 : 0.2, player.stumble > 0 ? 0.9 : 0);
+    Sfx.startBreathing();
+    Sfx.setBreathing(effort);
+
     // the crickets stop when it's near
     Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
