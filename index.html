@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Behind You</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- screen effects -->
+<div id="vignette"></div>
+<div id="danger"></div>
+<canvas id="static" width="96" height="64"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="distance">0 m</div>
+  <div id="stamina"><div id="staminaFill"></div></div>
+</div>
+
+<!-- joystick -->
+<div id="stick" class="hidden"><div id="knob"></div></div>
+
+<!-- menus -->
+<div id="menu" class="overlay">
+  <h1>BEHIND YOU</h1>
+  <p class="sub">Something is following you.<br>Don't stop. Don't look back.</p>
+  <p class="help">Drag anywhere with one thumb<br>&larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; sprint &nbsp;&middot;&nbsp; &darr; slow down</p>
+  <p class="help small">Headphones recommended</p>
+  <p class="blink">TAP TO RUN</p>
+  <p id="bestMenu" class="small"></p>
+</div>
+
+<div id="over" class="overlay solid hidden">
+  <h1 class="red">IT CAUGHT YOU</h1>
+  <p id="result" class="sub"></p>
+  <p id="best" class="small"></p>
+  <p class="blink">TAP TO RUN AGAIN</p>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="js/textures.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
