@@ -149,6 +149,55 @@
     return toTexture(c, false);
   }
 
+  // The thing's skin: dark, blotchy, with pale streaks like stretched skin over bone.
+  function buildMonsterSkin() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(S, 6);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const v = 0.35 + n(x, y) * 0.5 + Math.random() * 0.15;
+      const streak = (y % 6 === 0 && Math.random() < 0.7) ? 1.6 : 1;
+      return [52 * v * streak, 48 * v * streak, 46 * v * streak];
+    });
+    return toTexture(c, false);
+  }
+
+  // Its face: pale, with hollow black eye sockets and a long gaping mouth.
+  function buildMonsterFace() {
+    const S = 64;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(S, 8);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const v = 0.55 + n(x, y) * 0.35 + Math.random() * 0.1;
+      return [175 * v, 168 * v, 155 * v];
+    });
+    // dark stains running down from the eyes
+    ctx.fillStyle = 'rgba(30,20,20,0.55)';
+    [20, 44].forEach(ex => {
+      for (let i = 0; i < 4; i++) ctx.fillRect(ex - 4 + Math.floor(Math.random() * 8), 28, 1, 8 + Math.floor(Math.random() * 18));
+    });
+    // hollow eye sockets
+    ctx.fillStyle = '#050303';
+    [20, 44].forEach(ex => {
+      ctx.beginPath();
+      ctx.ellipse(ex, 24, 7, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // long gaping mouth
+    ctx.beginPath();
+    ctx.ellipse(32, 50, 8, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // crooked teeth
+    ctx.fillStyle = '#c8c0a0';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(25 + i * 2.5 + Math.random(), 39 + Math.random() * 2, 1, 3 + Math.floor(Math.random() * 3));
+      ctx.fillRect(25 + i * 2.5 + Math.random(), 58 - Math.random() * 2, 1, 3 + Math.floor(Math.random() * 3));
+    }
+    return toTexture(c, false);
+  }
+
   window.Textures = {
     ATLAS: ATLAS,
     build: function () {
@@ -156,7 +205,9 @@
         atlas: buildAtlas(),
         ground: buildGround(),
         bush: buildBush(),
-        hand: buildHand()
+        hand: buildHand(),
+        monsterSkin: buildMonsterSkin(),
+        monsterFace: buildMonsterFace()
       };
     }
   };

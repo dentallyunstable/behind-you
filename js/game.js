@@ -9,6 +9,7 @@
   const STRAFE_SPEED = 5.5;
   const START_GAP = 22;         // meters between you and it at the start
   const MAX_GAP = 32;
+  const LOOK_PENALTY = 1.5;     // it closes in this much faster (m/s) while you look back
   const STICK_RADIUS = 55;      // pixels
 
   const $ = id => document.getElementById(id);
@@ -16,7 +17,7 @@
     hud: $('hud'), distance: $('distance'), staminaFill: $('staminaFill'),
     stick: $('stick'), knob: $('knob'), menu: $('menu'), over: $('over'),
     result: $('result'), best: $('best'), bestMenu: $('bestMenu'),
-    danger: $('danger'), staticCanvas: $('static')
+    danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static')
   };
 
   // ---- renderer / scene ----------------------------------------------------
@@ -28,8 +29,7 @@
   scene.background = new THREE.Color(0x020306);
   scene.fog = new THREE.Fog(0x020306, 3, 21);
 
-  // The runner's body. The camera (head) is a child, so it can turn to look back
-  // while the flashlight and hand keep pointing forward.
+  // The runner's body. The camera (head) is a child, so it can turn to look back.
   const body = new THREE.Object3D();
   body.rotation.order = 'YXZ';
   scene.add(body);
@@ -55,10 +55,14 @@
 
   const tex = Textures.build();
   const world = World.create(scene, tex);
+  // the thing behind you, and a second one for the figures you sometimes see ahead
+  const chaser = Monster.create(scene, tex);
+  const watcher = Monster.create(scene, tex);
 
   // ---- first-person flashlight + hand (low-poly viewmodel) ---------------
   const viewmodel = new THREE.Group();
   const vmBase = { x: 0.24, y: -0.24 };
+  const lensMat = new THREE.MeshBasicMaterial({ color: 0xfff4d0 });
   (function buildViewmodel() {
     const metal = new THREE.MeshBasicMaterial({ color: 0x2a2a2e });
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x6a5a50 });
@@ -69,7 +73,7 @@
     head.rotation.x = Math.PI / 2;
     head.position.z = -0.15;
     viewmodel.add(head);
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.042, 6), new THREE.MeshBasicMaterial({ color: 0xfff4d0 }));
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.042, 6), lensMat);
     lens.position.z = -0.186;
     viewmodel.add(lens);
     const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.085, 0.11), skin);
@@ -88,6 +92,7 @@
   })();
 
   // ---- sizing --------------------------------------------------------------
+  let baseFov = 70;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     const ratio = Math.min(window.devicePixelRatio || 1, RENDER_LINES / h);
@@ -98,7 +103,8 @@
     // Keep at least ~75 degrees horizontally, so portrait phones still see enough.
     const hfov = 75 * Math.PI / 180;
     const vfov = 2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180 / Math.PI;
-    camera.fov = Math.min(Math.max(vfov, 62), 95);
+    baseFov = Math.min(Math.max(vfov, 62), 95);
+    camera.fov = baseFov;
     camera.updateProjectionMatrix();
     // smaller hand on tall (portrait) screens so it doesn't cover the view
     viewmodel.scale.setScalar(aspect < 1 ? 0.7 : 1);
@@ -202,8 +208,18 @@
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
   let heartTimer = 0, cricketTimer = 2;
   let runTime = 0;
-  let caughtYaw = 0;
+  let caughtYaw = 0, caughtFrom = 0, caughtDir = 1;
+  let closeNow = 0, beatPulse = 0, lightCut = 0;
+  // looking back
   let lookTimer = 0, lookT = -1, lookDir = 1, lookAmount = 0;
+  let lookDur = 2, lookTurn = 0.35, closeCall = false, closeCallCooldown = 0;
+  let chaserX = 0;
+  // flashlight failures
+  let blackoutTimer = 0, blackoutT = -1, blackoutOff = 1.5;
+  // chase moods: normal / lull (it falls back) -> then suddenly much closer
+  let paceState = 'normal', pace = 1, paceTimer = 0;
+  // figures watching from between the trees ahead
+  let watcherTimer = 0, watcherActive = false, watcherD = 0, watcherX = 0;
 
   function setState(s) {
     state = s;
@@ -221,7 +237,16 @@
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
     heartTimer = 0;
     runTime = 0; caughtYaw = 0;
-    lookTimer = 10 + Math.random() * 8; lookT = -1; lookAmount = 0;
+    lookTimer = 10 + Math.random() * 8; lookT = -1; lookAmount = 0; closeCall = false; closeCallCooldown = 0;
+    closeNow = 0; beatPulse = 0; lightCut = 0; caughtFrom = 0;
+    blackoutTimer = 25 + Math.random() * 20; blackoutT = -1;
+    paceState = 'normal'; pace = 1; paceTimer = 20 + Math.random() * 10;
+    watcherTimer = 40 + Math.random() * 30; watcherActive = false;
+    chaser.root.visible = false;
+    watcher.root.visible = false;
+    ui.tunnel.style.transform = 'scale(2.4)';
+    camera.fov = baseFov;
+    camera.updateProjectionMatrix();
     world.reset();
     world.update(0);
     ui.staticCanvas.style.opacity = '0';
@@ -237,6 +262,14 @@
 
   function caught() {
     setState('caught');
+    // whip around from wherever the head is now, and it's right there
+    caughtFrom = lookDir * lookAmount * 2.7;
+    caughtDir = lookAmount > 0 ? lookDir : (Math.random() < 0.5 ? 1 : -1);
+    lookT = -1; lookAmount = 0; blackoutT = -1; flicker = 0; lightCut = 0;
+    watcher.root.visible = false;
+    watcherActive = false;
+    chaser.setMode('lunge');
+    chaser.root.visible = true;
     Sfx.caught();
     Sfx.stopBreathing();
     Sfx.setAmbience(0);
@@ -250,6 +283,8 @@
     ui.best.textContent = 'Furthest: ' + best + ' m';
     showBestMenu();
     setState('over');
+    chaser.root.visible = false;
+    ui.tunnel.style.transform = 'scale(2.4)';
     Sfx.setAmbience(0.6);
   }
 
@@ -302,12 +337,41 @@
       player.speed *= 0.25;
       shake = 0.5;
       Sfx.hit();
+      // Close call: you stumble, glance back... and it's right there. Then you keep running.
+      if (lookT < 0 && gap < 14 && closeCallCooldown <= 0 && runTime > 5) {
+        startLook(1.1, 0.15, true, true);
+        closeCallCooldown = 18;
+      }
+    }
+    closeCallCooldown -= dt;
+
+    // Chase moods: sometimes it falls back and things calm down... then it's suddenly much closer.
+    paceTimer -= dt;
+    if (paceTimer <= 0) {
+      if (paceState === 'normal' && player.d > 250 && Math.random() < 0.6) {
+        paceState = 'lull';
+        pace = 0.75;
+        paceTimer = 7 + Math.random() * 4;
+      } else if (paceState === 'lull') {
+        paceState = 'normal';
+        pace = 1;
+        paceTimer = 14 + Math.random() * 10;
+        if (gap > 9) {
+          gap = 6.5 + Math.random() * 2.5;
+          shake = 0.7;
+          beatPulse = 1;
+        }
+      } else {
+        paceTimer = 10 + Math.random() * 8;
+      }
     }
 
     // The thing behind you. It waits a moment, then never stops.
+    // Looking back costs you: it gains on you while you look.
     if (runTime > 2.5) {
-      const chaserSpeed = base * (0.94 + diff * 0.14);
-      gap += (player.speed - chaserSpeed) * dt;
+      const chaserSpeed = base * (0.94 + diff * 0.14) * pace;
+      const lookCost = closeCall ? 0 : lookAmount * LOOK_PENALTY;
+      gap += (player.speed - chaserSpeed - lookCost) * dt;
       gap = Math.min(gap, MAX_GAP);
     }
     if (gap <= 0) {
@@ -317,13 +381,16 @@
 
     // closeness: 0 far away, 1 right behind you
     const close = Math.max(0, Math.min(1, 1 - gap / 26));
+    closeNow = close;
 
     // sounds
     heartTimer -= dt;
     if (heartTimer <= 0) {
       heartTimer = 1.1 - close * 0.72;
       Sfx.heartbeat(0.08 + close * 0.55);
+      beatPulse = 1;
     }
+    beatPulse = Math.max(0, beatPulse - dt * 4);
     // Breathing gets louder and faster when it's close, you're sprinting, or you just hit a tree.
     const effort = Math.max(close, sprinting ? 0.6 : 0.2, player.stumble > 0 ? 0.9 : 0);
     Sfx.startBreathing();
@@ -332,24 +399,70 @@
     // the crickets stop when it's near
     Sfx.setAmbience(0.9 * Math.max(0.05, 1 - close * 1.3));
 
-    // Every now and then you can't help it: you look back for about 2 seconds,
-    // still running forward, with the flashlight pointing at the dark behind you.
+    // Every now and then you can't help it: you look back for about 2 seconds.
+    // Sometimes it's there (more likely the closer it is), sometimes there's only the dark.
     if (lookT < 0) {
       lookTimer -= dt;
       if (lookTimer <= 0 && player.stumble <= 0) {
-        lookT = 0;
-        lookDir = Math.random() < 0.5 ? 1 : -1;
+        startLook(2.0, 0.35, Math.random() < 0.3 + close * 0.7, false);
         Sfx.heartbeat(0.6);
       }
     } else {
       lookT += dt;
-      const TURN = 0.35, LOOK = 2.0;
-      const k = lookT < TURN ? lookT / TURN : lookT > LOOK - TURN ? (LOOK - lookT) / TURN : 1;
+      const k = lookT < lookTurn ? lookT / lookTurn : lookT > lookDur - lookTurn ? (lookDur - lookT) / lookTurn : 1;
       lookAmount = Math.max(0, k * k * (3 - 2 * k));
-      if (lookT >= LOOK) {
+      if (lookT >= lookDur) {
         lookT = -1;
         lookAmount = 0;
-        lookTimer = 10 + Math.random() * 12;
+        chaser.root.visible = false;
+        if (closeCall) lookTimer = Math.max(lookTimer, 5);
+        else lookTimer = 10 + Math.random() * 12;
+        closeCall = false;
+      }
+    }
+    if (chaser.root.visible) {
+      // during a close call it's right there, whatever the real distance
+      const dist = closeCall ? 2.4 : Math.max(gap, 1.2);
+      const tx = Math.max(-12, Math.min(12, player.x - lookDir * Math.min(dist, 14) * 0.3));
+      chaserX += (tx - chaserX) * Math.min(1, dt * 2);
+      chaser.place(chaserX, 0, -player.d + dist, player.x, -player.d);
+      chaser.update(dt);
+    }
+
+    // The flashlight sometimes dies for a second or two: run blind and trust the path.
+    if (blackoutT < 0) {
+      blackoutTimer -= dt;
+      if (blackoutTimer <= 0 && player.d > 150 && lookT < 0) {
+        blackoutT = 0;
+        blackoutOff = 1 + Math.random();
+      }
+    } else {
+      blackoutT += dt;
+      if (blackoutT > 0.35 + blackoutOff + 0.4) {
+        blackoutT = -1;
+        blackoutTimer = 22 + Math.random() * 25 - close * 10;
+      }
+    }
+
+    // Fake-outs: a figure standing between the trees ahead, watching. The light flickers... gone.
+    if (!watcherActive) {
+      watcherTimer -= dt;
+      if (watcherTimer <= 0 && player.d > 250 && lookT < 0 && blackoutT < 0) {
+        watcherActive = true;
+        watcherD = player.d + 22;
+        watcherX = Math.max(-12, Math.min(12, player.x + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 4)));
+        watcher.setMode('still');
+        watcher.root.visible = true;
+      }
+    } else {
+      if (watcherD - player.d < 10 || lookT >= 0 || blackoutT >= 0) {
+        watcher.root.visible = false;
+        watcherActive = false;
+        lightCut = 0.15;
+        watcherTimer = 40 + Math.random() * 40;
+      } else {
+        watcher.place(watcherX, 0, -watcherD, player.x, -player.d);
+        watcher.update(dt);
       }
     }
 
@@ -357,13 +470,40 @@
     if (flicker > 0) flicker -= dt;
     else if (gap < 11 && Math.random() < dt * (11 - gap) * 0.25) flicker = 0.05 + Math.random() * 0.18;
 
-    const pulse = 0.85 + 0.15 * Math.sin(runTime * (6 + close * 8));
-    ui.danger.style.opacity = (Math.max(0, (close - 0.35) / 0.65) * 0.9 * pulse).toFixed(3);
+    // panic: red edges, tunnel vision and the view pulsing with your heartbeat
+    const danger = Math.max(0, (close - 0.35) / 0.65);
+    ui.danger.style.opacity = (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3);
+    const tunnel = 2.4 - Math.pow(close, 1.5) * 1.35 - beatPulse * close * 0.12;
+    ui.tunnel.style.transform = 'scale(' + tunnel.toFixed(3) + ')';
+    camera.fov = baseFov * (1 - close * 0.06 + beatPulse * close * 0.025);
+    camera.updateProjectionMatrix();
 
     // HUD
     ui.distance.textContent = Math.floor(player.d) + ' m';
     ui.staminaFill.style.width = (player.stamina * 100).toFixed(1) + '%';
     ui.staminaFill.style.background = player.stamina < 0.25 ? '#a04030' : '#c8b878';
+  }
+
+  function startLook(dur, turn, show, isCloseCall) {
+    lookT = 0;
+    lookDur = dur;
+    lookTurn = turn;
+    lookDir = Math.random() < 0.5 ? 1 : -1;
+    closeCall = isCloseCall;
+    if (show) {
+      chaserX = Math.max(-12, Math.min(12, player.x - lookDir * Math.min(gap, 14) * 0.3));
+      chaser.setMode(isCloseCall ? 'reach' : Math.random() < 0.65 ? 'run' : 'still');
+      chaser.root.visible = true;
+    }
+  }
+
+  // how much the flashlight is working right now (0 = dead)
+  function lightLevel() {
+    if (lightCut > 0) return 0;
+    if (blackoutT < 0) return 1;
+    if (blackoutT < 0.35) return Math.random() < 0.5 ? 0.05 : 0.6;
+    if (blackoutT < 0.35 + blackoutOff) return 0;
+    return Math.random() < 0.5 ? 0.1 : 0.8;
   }
 
   function updateCamera(dt) {
@@ -377,7 +517,10 @@
     }
 
     shake = Math.max(0, shake - dt);
-    const sx = (Math.random() - 0.5) * shake * 0.2, sy = (Math.random() - 0.5) * shake * 0.2;
+    lightCut = Math.max(0, lightCut - dt);
+    // constant trembling when it's close
+    const tremble = shake * 0.2 + closeNow * closeNow * 0.03;
+    const sx = (Math.random() - 0.5) * tremble, sy = (Math.random() - 0.5) * tremble;
 
     body.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy, -player.d);
     body.rotation.y = -player.vx * 0.03;
@@ -385,10 +528,10 @@
     body.rotation.z = -player.vx * 0.01 + Math.sin(bobPhase) * 0.012 * speedNorm;
     // head turn: looking back over the shoulder, or the last turn when it catches you
     camera.rotation.y = lookDir * lookAmount * 2.7 + caughtYaw;
-    camera.rotation.x = lookAmount * -0.1;
+    camera.rotation.x = lookAmount * -0.1 + (state === 'caught' ? 0.12 : 0);
     // the flashlight swings around with your head, so you see a little of what's behind
-    arm.rotation.y = lookDir * lookAmount * 2.7;
-    arm.rotation.x = lookAmount * -0.1;
+    arm.rotation.y = camera.rotation.y;
+    arm.rotation.x = camera.rotation.x;
     ambient.intensity = AMBIENT * (1 - lookAmount * 0.5);
 
     // flashlight swings with your arm
@@ -396,11 +539,16 @@
     const swayY = Math.abs(Math.cos(bobPhase)) * 0.015 * speedNorm;
     viewmodel.position.set(vmBase.x + swayX, vmBase.y + swayY - bob * 0.3, -0.42);
     flashlight.target.position.set(swayX * 25 + player.vx * 0.15, -1.6 + swayY * 20, -10);
+    // when caught, the light lands right on its face
+    if (state === 'caught') flashlight.target.position.set(-3, 4, -10);
 
     let intensity = 2.4 * (0.97 + Math.random() * 0.03);
     if (flicker > 0) intensity *= Math.random() < 0.5 ? 0.05 : 0.4;
-    if (state === 'caught') intensity = stateTime > 0.12 ? 0 : intensity * 0.3;
+    intensity *= lightLevel();
+    // when it catches you, the light shows its face for a split second, then dies
+    if (state === 'caught') intensity = stateTime < 0.55 ? 2.6 : 0;
     flashlight.intensity = intensity;
+    lensMat.color.setScalar(0.15 + 0.85 * Math.min(1, intensity / 2.4));
   }
 
   // ---- main loop -------------------------------------------------------------
@@ -417,16 +565,18 @@
     if (state === 'play') {
       updatePlay(dt);
     } else if (state === 'caught') {
-      // You start to turn around... and that's all you ever see.
+      // You whip around... and for a split second you see its face.
       player.speed *= 0.9;
-      // (if you were already looking back, you just stay facing the dark)
-      caughtYaw = lookAmount > 0 ? 0 : Math.min(stateTime / 0.35, 1) * 2.4;
-      shake = 0.6;
-      if (stateTime > 0.25) {
+      const k = Math.min(stateTime / 0.18, 1);
+      caughtYaw = caughtFrom + (caughtDir * Math.PI - caughtFrom) * (1 - Math.pow(1 - k, 3));
+      shake = 0.35;
+      chaser.place(player.x, -0.45, -player.d + 1.75, player.x, -player.d);
+      chaser.update(dt);
+      if (stateTime > 0.55) {
         ui.staticCanvas.style.opacity = '1';
         drawStatic();
       }
-      if (stateTime > 1.5) {
+      if (stateTime > 1.6) {
         ui.staticCanvas.style.opacity = '0';
         ui.danger.style.opacity = '0';
         finishCaught();
@@ -460,5 +610,10 @@
   requestAnimationFrame(frame);
 
   // handy for testing from the browser console
-  window.__game = { lookNow: () => { lookTimer = 0; gap = MAX_GAP; }, look: () => lookAmount, player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
+  window.__game = {
+    lookNow: () => { lookTimer = 0; }, look: () => lookAmount,
+    debug: () => ({ chaser: chaser.root.visible, watcher: watcher.root.visible, watcherActive: watcherActive, lookT: lookT, blackoutT: blackoutT, gap: gap }), setGap: v => { gap = v; },
+    closeCall: () => { player.hitCooldown = 0; startLook(1.1, 0.15, true, true); },
+    blackout: () => { blackoutTimer = 0; }, watcher: () => { watcherTimer = 0; player.d = Math.max(player.d, 260); },
+    player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
 })();

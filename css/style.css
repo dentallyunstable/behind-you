@@ -25,7 +25,7 @@ html, body {
   image-rendering: crisp-edges;
 }
 
-#vignette, #danger, #static {
+#vignette, #tunnel, #danger, #static {
   position: fixed;
   inset: 0;
   width: 100%;
@@ -34,6 +34,12 @@ html, body {
 }
 #vignette {
   background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.85) 100%);
+}
+/* Tunnel vision: scaled up it's invisible, scaled down to 1 the edges go black. */
+#tunnel {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 38%, rgba(0,0,0,0.97) 72%);
+  transform: scale(2.4);
+  will-change: transform;
 }
 #danger {
   background: radial-gradient(ellipse at center, rgba(120,0,0,0) 35%, rgba(140,0,0,0.9) 100%);
