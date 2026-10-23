@@ -75,9 +75,9 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 12px;
   font-weight: bold;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: rgba(216,210,192,0.7);
   text-shadow: 2px 2px 0 #000;
 }
@@ -95,6 +95,9 @@ html, body {
 #sprint span { pointer-events: none; }
 #sprint.on { background: rgba(200,184,120,0.25); color: #e8e0c8; }
 #sprint.low #sprintRing { stroke: #a04030; }
+/* out of breath: the button can't be used, the ring blinks red */
+#sprint.tired { color: rgba(216,210,192,0.25); background: rgba(0,0,0,0.3); }
+#sprint.tired #sprintRing { animation: blink 0.5s steps(2) infinite; }
 
 #stick {
   position: fixed;

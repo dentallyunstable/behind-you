@@ -11,6 +11,9 @@
   const MAX_GAP = 32;
   const LOOK_PENALTY = 1.5;     // it closes in this much faster (m/s) while you look back
   const STICK_RADIUS = 55;      // pixels
+  const TIRED_AT = 0.15;        // sprint stamina below this and you're out of breath...
+  const RECOVERED_AT = 0.5;     // ...until it's back up to this
+  const TIRED_SPEED = 0.7;      // out of breath: slower than your normal run
   const SPRINT_RING = 276.5;    // length of the stamina ring around the sprint button (2 * PI * 44)
   const JUMP_SPEED = 4.4;
   const GRAVITY = 14;
@@ -244,7 +247,7 @@
   // ---- game state ------------------------------------------------------------
   let state = 'menu';
   let stateTime = 0;
-  const player = { x: 0, d: 0, y: 0, vx: 0, vy: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
+  const player = { x: 0, d: 0, y: 0, vx: 0, vy: 0, speed: 0, stamina: 1, tired: false, stumble: 0, hitCooldown: 0 };
   let gap = START_GAP;
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
   let heartTimer = 0, cricketTimer = 2;
@@ -282,7 +285,7 @@
     seat = 1; lightOn = false; vmRaise = 1; introT = -1;
     viewmodel.visible = false;
     ui.hint.classList.add('hidden');
-    player.stamina = 1; player.stumble = 0; player.hitCooldown = 0;
+    player.stamina = 1; player.tired = false; player.stumble = 0; player.hitCooldown = 0;
     gap = START_GAP;
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
     heartTimer = 0;
@@ -406,13 +409,18 @@
     const diff = world.difficulty(player.d);
     const base = 6 + diff * 2.6;
     let want = base;
-    const sprinting = input.sprint && player.stamina > 0.02;
+    // Sprint until you're nearly empty and you're out of breath: no sprinting,
+    // and slower than your normal run until you've got your breath back.
+    const sprinting = input.sprint && !player.tired;
     if (sprinting) {
       want = base * 1.4;
       player.stamina = Math.max(0, player.stamina - 0.3 * dt);
+      if (player.stamina < TIRED_AT) player.tired = true;
     } else {
       player.stamina = Math.min(1, player.stamina + 0.14 * dt);
+      if (player.tired && player.stamina >= RECOVERED_AT) player.tired = false;
       if (input.y < -0.35) want = base * 0.6;
+      else if (player.tired) want = base * TIRED_SPEED;
     }
     if (player.stumble > 0) {
       player.stumble -= dt;
@@ -514,7 +522,7 @@
     }
     beatPulse = Math.max(0, beatPulse - dt * 4);
     // Breathing gets louder and faster when it's close, you're sprinting, or you just hit a tree.
-    const effort = Math.max(close, sprinting ? 0.6 : 0.2, player.stumble > 0 ? 0.9 : 0);
+    const effort = Math.max(close, sprinting ? 0.6 : 0.2, player.stumble > 0 || player.tired ? 0.9 : 0);
     Sfx.startBreathing();
     Sfx.setBreathing(effort);
 
@@ -604,7 +612,8 @@
     ui.distance.textContent = Math.max(0, Math.floor(player.d)) + ' m';
     // stamina: the ring around the sprint button
     ui.sprintRing.style.strokeDashoffset = (SPRINT_RING * (1 - player.stamina)).toFixed(1);
-    ui.sprint.classList.toggle('low', player.stamina < 0.25);
+    ui.sprint.classList.toggle('low', player.stamina < 0.25 || player.tired);
+    ui.sprint.classList.toggle('tired', player.tired);
   }
 
   function startLook(dur, turn, show, isCloseCall) {
@@ -647,7 +656,9 @@
 
     body.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy + player.y, -player.d);
     body.rotation.y = -player.vx * 0.03;
-    body.rotation.x = -0.06 + Math.sin(bobPhase * 2) * 0.008 * speedNorm;
+    // out of breath: head hangs a little and sways heavily
+    const tired = state === 'play' && player.tired ? 1 : 0;
+    body.rotation.x = -0.06 - tired * 0.07 + Math.sin(bobPhase * 2) * (0.008 + tired * 0.012) * speedNorm;
     body.rotation.z = -player.vx * 0.01 + Math.sin(bobPhase) * 0.012 * speedNorm;
     // head turn: looking back over the shoulder, or the last turn when it catches you
     camera.rotation.y = lookDir * lookAmount * 2.7 + caughtYaw;

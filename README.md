@@ -13,7 +13,8 @@ Open `index.html` in any browser (phone or computer). No install is needed.
   - left / right: steer
   - push up: jump
   - pull down: slow down
-  - hold the **RUN** button (bottom right) with your other thumb to sprint. The ring around it is your stamina.
+  - hold the **FASTER** button (bottom right) with your other thumb to sprint. The ring around it is your stamina.
+    Sprint it nearly empty and you're out of breath: no sprinting, and slower than your normal run until half of it is back.
 - **Computer:** arrow keys or WASD, Space or up to jump, Shift to sprint.
 
 Hitting a tree makes you stumble and lets it get closer. Listen to your heartbeat and breathing.
