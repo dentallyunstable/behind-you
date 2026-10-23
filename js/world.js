@@ -20,6 +20,17 @@
     eyes: [{ x: -9.5, d: -5 }, { x: 8, d: -9 }]
   };
 
+  // The end of the level: your truck by the highway. The road runs across the forest (along x).
+  const FINISH = {
+    length: 2000,         // the level is this long
+    carD: 2001, carX: 1.5, doorX: 1.0,
+    roadD0: 2003, roadD1: 2010.5,
+    lampX: 7.5, lampD: 2001.6,
+    approach: 1940,       // from here the trees open up towards the truck
+    clearFrom: 1996, clearTo: 2013, // no trees: the shoulder, the road, the far side
+    endlessFrom: 2014     // endless mode: the forest beyond the road
+  };
+
   // The abandoned places. w/d: size of the footprint (local x/z), facing: turn it to face the path.
   const PLACES = {
     cabin: { w: 4.6, d: 3.9, facing: true },
@@ -121,24 +132,36 @@
     let nextLogD = 0, nextPlaceD = 0, lastPlace = '';
     let reserved = [];      // areas kept free for a place: {x0, x1, d0, d1, side}
     let pending = [];       // places waiting to be added to the row at their far end
+    let mode = 'level';     // 'level': from the camp to the truck; 'endless': on from the truck, forever
 
-    function reset() {
+    function reset(newMode, startD) {
+      mode = newMode || 'level';
+      startD = startD || 0;
       rows = [];
-      nextRowD = -KEEP_BEHIND;
-      pathX = 0;
+      nextRowD = Math.round((startD - KEEP_BEHIND) / ROW_STEP) * ROW_STEP;
+      pathX = mode === 'endless' ? FINISH.doorX : 0;
       pathV = 0;
       dirty = true;
-      nextLogD = 110 + Math.random() * 40;
-      nextPlaceD = 170 + Math.random() * 60;
+      nextLogD = (mode === 'endless' ? FINISH.endlessFrom + 50 : 110) + Math.random() * 40;
+      nextPlaceD = (mode === 'endless' ? FINISH.endlessFrom + 90 : 170) + Math.random() * 60;
       lastPlace = '';
       reserved = [];
       pending = [];
     }
 
-    // 0 at the start, 1 when the forest is as dense as it gets
+    function clamp01(v) { return Math.min(Math.max(v, 0), 1); }
+
+    // 0 at the start, about 1 when the forest is as dense as it gets
     function difficulty(d) {
-      const t = Math.min(Math.max((d - START_CLEAR) / 2200, 0), 1);
-      return t * (2 - t);
+      if (mode === 'endless') {
+        // beyond the road it starts out already fairly thick, and keeps getting worse
+        const t = clamp01((d - FINISH.endlessFrom) / 2200);
+        return 0.35 + 0.75 * t * (2 - t);
+      }
+      const t = clamp01((d - START_CLEAR) / 2600);
+      // the last stretch before the road is much harder
+      const k = clamp01((d - 1750) / 130);
+      return t * (2 - t) + 0.35 * k * k * (3 - 2 * k);
     }
 
     function isReserved(x, d, r) {
@@ -179,7 +202,10 @@
     function genRow(d) {
       const items = [];
       const diff = difficulty(d);
-      const gapHalf = 3.6 - diff * 2.0; // never narrower than 3.2m total
+      // the open path: never narrower than 2.4 m, and wide open on the way to the truck
+      let gapHalf = Math.max(1.2, 3.6 - diff * 2.0);
+      const approach = d >= FINISH.approach && d < FINISH.clearFrom;
+      if (approach) gapHalf = Math.max(gapHalf, 2 + (d - FINISH.approach) * 0.08);
 
       // The guaranteed open path wanders smoothly left and right.
       pathV += (Math.random() - 0.5) * 0.35;
@@ -194,6 +220,11 @@
         if (z.side > 0 && pathX > z.x0 - gapHalf - 0.6) { pathX = z.x0 - gapHalf - 0.6; pathV = -Math.abs(pathV) * 0.5; }
         if (z.side < 0 && pathX < z.x1 + gapHalf + 0.6) { pathX = z.x1 + gapHalf + 0.6; pathV = Math.abs(pathV) * 0.5; }
       });
+      // ...and leads to the truck's door at the end
+      if (d >= FINISH.approach - 20 && d < FINISH.clearTo) {
+        pathX += (FINISH.doorX - pathX) * 0.15;
+        pathV *= 0.5;
+      }
 
       function free(x, r) {
         return Math.abs(x - pathX) > gapHalf + r + 0.35;
@@ -221,6 +252,9 @@
         return false;
       });
 
+      // The roadside, the road and the far shoulder: nothing grows there.
+      if (d >= FINISH.clearFrom && d < FINISH.clearTo) return { d: d, items: items };
+
       // Walls of trees at the edges, so the forest feels endless sideways.
       for (let side = -1; side <= 1; side += 2) {
         add('pine', side * (13 + Math.random() * 1.2), 0.9 + Math.random() * 0.5);
@@ -246,7 +280,8 @@
 
       // A fallen tree across the path: jump over it.
       let logRow = null;
-      if (d > 100 && d >= nextLogD && !isReserved(pathX, d, 6)) {
+      const logsHere = mode === 'endless' ? d > FINISH.endlessFrom + 30 : d > 100 && d < FINISH.approach - 6;
+      if (logsHere && d >= nextLogD && !isReserved(pathX, d, 6)) {
         const half = Math.max(gapHalf + 1, 3.2 + Math.random() * 1.6);
         const lx = pathX + (Math.random() - 0.5) * 1.2;
         logRow = { x0: lx - half - 0.8, x1: lx + half + 0.8 };
@@ -257,10 +292,13 @@
         });
         // later on they come more often
         nextLogD = d + 90 - diff * 40 + Math.random() * 70;
+        // the last stretch: one after another
+        if (mode === 'level' && d > 1750) nextLogD = d + 26 + Math.random() * 26;
       }
 
       // Now and then: something somebody left behind.
-      if (d > 170 && d >= nextPlaceD && Math.abs(d - nextLogD) > 12) {
+      const placesHere = mode === 'endless' ? d > FINISH.endlessFrom + 60 : d > 170 && d < 1860;
+      if (placesHere && d >= nextPlaceD && Math.abs(d - nextLogD) > 12) {
         planPlace(d, gapHalf);
         nextPlaceD = d + 170 + Math.random() * 150;
       }
@@ -270,7 +308,8 @@
       }
 
       // Obstacles: few at the start, more the further you run.
-      if (d > START_CLEAR) {
+      const obstaclesHere = mode === 'endless' ? d > FINISH.endlessFrom + 12 : d > START_CLEAR && !approach;
+      if (obstaclesHere) {
         const expected = 0.35 + diff * 3.2;
         let count = Math.floor(expected + Math.random());
         let tries = 0;
@@ -344,6 +383,26 @@
       ground.position.z = -(Math.round(playerD / 4) * 4) - 25;
     }
 
+    // Push the player out of a box (x/z centre, half sizes). Returns true if they were inside it.
+    function pushOutOfBox(p, radius, bx, bz, hw, hd) {
+      const dx = p.x - bx, dz = -p.d - bz;
+      const cx = Math.max(-hw, Math.min(hw, dx));
+      const cz = Math.max(-hd, Math.min(hd, dz));
+      const ex = dx - cx, ez = dz - cz;
+      const dist = Math.hypot(ex, ez);
+      if (dist >= radius) return false;
+      if (dist > 0.0001) {
+        p.x += ex / dist * (radius - dist);
+        p.d -= ez / dist * (radius - dist);
+      } else {
+        // inside it: leave by the nearest side
+        const ox = hw - Math.abs(dx), oz = hd - Math.abs(dz);
+        if (ox < oz) p.x += Math.sign(dx || 1) * (ox + radius);
+        else p.d -= Math.sign(dz || 1) * (oz + radius);
+      }
+      return true;
+    }
+
     // Push the player out of anything solid they run into. Returns true on a hit.
     // p.y is how high the player is off the ground (jumping over logs).
     function collide(p, radius) {
@@ -368,22 +427,7 @@
             }
           } else if (it.box) {
             // a building, a car, a fence
-            const cx = Math.max(-it.box.hw, Math.min(it.box.hw, dx));
-            const cz = Math.max(-it.box.hd, Math.min(it.box.hd, dz));
-            const ex = dx - cx, ez = dz - cz;
-            const dist = Math.hypot(ex, ez);
-            if (dist < radius) {
-              if (dist > 0.0001) {
-                p.x += ex / dist * (radius - dist);
-                p.d -= ez / dist * (radius - dist);
-              } else {
-                // inside it: leave by the nearest side
-                const ox = it.box.hw - Math.abs(dx), oz = it.box.hd - Math.abs(dz);
-                if (ox < oz) p.x += Math.sign(dx || 1) * (ox + radius);
-                else p.d -= Math.sign(dz || 1) * (oz + radius);
-              }
-              hit = true;
-            }
+            if (pushOutOfBox(p, radius, it.x, it.z, it.box.hw, it.box.hd)) hit = true;
           } else if (it.log && p.y < LOG_CLEAR) {
             // a fallen tree: along = distance along the log, across = distance from it
             const c = Math.cos(it.ry), s = Math.sin(it.ry);
@@ -403,6 +447,8 @@
           }
         }
       }
+      // your truck
+      if (Math.abs(p.d - FINISH.carD) < 4 && pushOutOfBox(p, radius, FINISH.carX, -FINISH.carD, 2.6, 1.0)) hit = true;
       return hit;
     }
 
@@ -436,5 +482,5 @@
     };
   }
 
-  window.World = { create: create, CAMP: CAMP };
+  window.World = { create: create, CAMP: CAMP, FINISH: FINISH };
 })();

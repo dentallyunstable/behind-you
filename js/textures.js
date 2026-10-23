@@ -151,7 +151,48 @@
     return toTexture(c, false);
   }
 
-  // Soft round glow, for the campfire seen from far away.
+  // Highway asphalt, one tile = 8 m of road (along x) and its full width (along y):
+  // white edge lines, a dashed yellow centre line, cracks and tar patches.
+  function buildRoad() {
+    const W = 64, H = 64;
+    const c = makeCanvas(W, H);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(W, 8);
+    paint(ctx, 0, 0, W, H, (x, y) => {
+      const v = 0.55 + n(x, y) * 0.3 + Math.random() * 0.15;
+      return [40 * v, 40 * v, 42 * v];
+    });
+    ctx.fillStyle = 'rgba(10,10,10,0.6)';
+    for (let i = 0; i < 6; i++) ctx.fillRect(Math.floor(rand(0, W)), Math.floor(rand(8, H - 8)), Math.floor(rand(4, 14)), Math.floor(rand(2, 5)));
+    ctx.fillStyle = 'rgba(150,146,130,0.75)';
+    ctx.fillRect(0, 5, W, 2);
+    ctx.fillRect(0, H - 7, W, 2);
+    ctx.fillStyle = 'rgba(160,130,40,0.8)';
+    ctx.fillRect(4, H / 2 - 1, 26, 2);
+    ctx.fillRect(36, H / 2 - 1, 26, 2);
+    // cracks
+    ctx.fillStyle = 'rgba(12,12,12,0.8)';
+    for (let i = 0; i < 4; i++) {
+      let x = rand(0, W), y = rand(10, H - 10);
+      for (let k = 0; k < 10; k++) { ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1); x += rand(-1, 1.5); y += rand(-1, 1); }
+    }
+    return toTexture(c, true);
+  }
+
+  // Dark red paint, faded and scratched (the pickup truck).
+  function buildPaint() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(S, 6);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const v = 0.6 + n(x, y) * 0.3 + Math.random() * 0.1;
+      return Math.random() < 0.02 ? [90, 70, 60] : [110 * v, 22 * v, 20 * v];
+    });
+    return toTexture(c, false);
+  }
+
+
   function buildGlow() {
     const S = 32;
     const c = makeCanvas(S, S);
@@ -269,6 +310,8 @@
         atlas: buildAtlas(),
         props: buildPropsAtlas(),
         glow: buildGlow(),
+        road: buildRoad(),
+        paint: buildPaint(),
         ground: buildGround(),
         bush: buildBush(),
         hand: buildHand(),

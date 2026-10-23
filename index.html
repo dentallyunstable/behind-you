@@ -17,6 +17,7 @@
 <div id="tunnel"></div>
 <div id="danger"></div>
 <canvas id="static" width="96" height="64"></canvas>
+<div id="fade"></div>
 
 <!-- HUD -->
 <div id="hud" class="hidden">
@@ -24,6 +25,7 @@
 </div>
 
 <div id="hint" class="hidden"></div>
+<div id="toast" class="hidden">You unlocked the endless mode.</div>
 
 <!-- joystick -->
 <div id="stick" class="hidden"><div id="knob"></div></div>
@@ -39,11 +41,12 @@
   <button id="settingsBtn" class="btn icon" aria-label="Settings">
     <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><path d="M4 0h4v1h-4zM1 1h2v1h-2zM4 1h4v1h-4zM9 1h2v1h-2zM1 2h10v1h-10zM2 3h8v1h-8zM0 4h4v1h-4zM8 4h4v1h-4zM0 5h4v1h-4zM8 5h4v1h-4zM0 6h4v1h-4zM8 6h4v1h-4zM0 7h4v1h-4zM8 7h4v1h-4zM2 8h8v1h-8zM1 9h10v1h-10zM1 10h2v1h-2zM4 10h4v1h-4zM9 10h2v1h-2zM4 11h4v1h-4z"/></svg>
   </button>
+  <button id="levelsBtn" class="btn corner">LEVELS</button>
   <h1>BEHIND YOU</h1>
   <p id="lookText" class="blink">Tap to look around.</p>
 </div>
 
-<div id="settings" class="overlay solid hidden">
+<div id="settings" class="overlay solid panel hidden">
   <h2>CONTROLS</h2>
   <div class="controls">
     <h3>PHONE</h3>
@@ -57,6 +60,33 @@
     <p class="small">Headphones recommended</p>
   </div>
   <button id="settingsClose" class="btn">BACK</button>
+</div>
+
+<div id="levels" class="overlay solid panel hidden">
+  <h2>LEVELS</h2>
+  <div class="level-list">
+    <div class="level-card" id="lvlForest">
+      <canvas id="forestShot" class="art" width="192" height="60"></canvas>
+      <div class="level-label">Level 1: <b>The Forest</b></div>
+      <button id="lvlEndless" class="mini locked"><canvas class="art" width="48" height="16"></canvas><span>ENDLESS</span></button>
+    </div>
+    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
+    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
+    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
+    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
+  </div>
+  <button id="levelsClose" class="btn">BACK</button>
+</div>
+
+<div id="escaped" class="overlay solid panel hidden">
+  <h1>YOU ESCAPED</h1>
+  <p class="sub">The Forest &middot; 2000 m</p>
+  <button id="nextBtn" class="btn locked-btn"><svg class="lock" viewBox="0 0 5 7" shape-rendering="crispEdges"><path d="M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM0 2h1v1h-1zM4 2h1v1h-1zM0 3h5v1h-5zM0 4h2v1h-2zM3 4h2v1h-2zM0 5h2v1h-2zM3 5h2v1h-2zM0 6h5v1h-5z"/></svg> NEXT LEVEL</button>
+  <p id="comingSoon" class="small">COMING SOON</p>
+  <div class="buttons">
+    <button id="endlessBtn" class="btn">ENDLESS</button>
+    <button id="escMenuBtn" class="btn">MAIN MENU</button>
+  </div>
 </div>
 
 <div id="over" class="overlay solid hidden">
@@ -77,6 +107,8 @@
 <script src="js/props.js"></script>
 <script src="js/world.js"></script>
 <script src="js/camp.js"></script>
+<script src="js/finish.js"></script>
+<script src="js/art.js"></script>
 <script src="js/monster.js"></script>
 <script src="js/game.js"></script>
 </body>

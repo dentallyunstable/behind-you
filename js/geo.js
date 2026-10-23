@@ -71,5 +71,17 @@
     return g;
   }
 
-  window.Geo = { part: part, merge: merge, mat: mat, prism: prism };
+  // A glow sprite for a light far away (size: how big it should look at a distance).
+  // The camera can't see past 40 m, so a far glow is drawn closer, scaled to look the same.
+  // Returns the real distance.
+  const GLOW_MAX = 34;
+  function placeGlow(sprite, at, viewer, size) {
+    const dist = viewer.distanceTo(at) || 0.001;
+    const shown = Math.min(dist, GLOW_MAX);
+    sprite.position.copy(viewer).lerp(at, shown / dist);
+    sprite.scale.setScalar(size(dist) * shown / dist);
+    return dist;
+  }
+
+  window.Geo = { part: part, merge: merge, mat: mat, prism: prism, placeGlow: placeGlow };
 })();

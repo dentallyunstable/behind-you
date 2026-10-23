@@ -80,7 +80,8 @@
       map: tex.glow, color: 0xff7a30, fog: false, transparent: true,
       blending: THREE.AdditiveBlending, depthWrite: false
     }));
-    glow.position.set(0, 0.5, fireZ);
+    const glowAt = new THREE.Vector3(0, 0.5, fireZ);
+    glow.position.copy(glowAt);
     root.add(glow);
 
     let acc = 1, t = 0;
@@ -118,8 +119,7 @@
         e.visible = u.life > 0.15 || Math.random() < 0.5;
       });
 
-      const dist = viewer.distanceTo(glow.position);
-      glow.scale.setScalar(Math.max(1.6, dist * 0.06));
+      const dist = Geo.placeGlow(glow, glowAt, viewer, d => Math.max(1.6, d * 0.06));
       glow.material.opacity = Math.max(0, Math.min(0.35, 1.15 - dist / 100)) * (0.85 + Math.random() * 0.15);
     }
 

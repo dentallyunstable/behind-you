@@ -25,7 +25,11 @@
     stick: $('stick'), knob: $('knob'), menu: $('menu'), over: $('over'),
     result: $('result'), best: $('best'), lookText: $('lookText'),
     settings: $('settings'), settingsBtn: $('settingsBtn'), settingsClose: $('settingsClose'),
-    againBtn: $('againBtn'), menuBtn: $('menuBtn'),
+    againBtn: $('againBtn'), menuBtn: $('menuBtn'), fade: $('fade'), toast: $('toast'),
+    levels: $('levels'), levelsBtn: $('levelsBtn'), levelsClose: $('levelsClose'),
+    lvlForest: $('lvlForest'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
+    escaped: $('escaped'), nextBtn: $('nextBtn'), comingSoon: $('comingSoon'),
+    endlessBtn: $('endlessBtn'), escMenuBtn: $('escMenuBtn'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
   };
 
@@ -65,12 +69,17 @@
   const tex = Textures.build();
   const world = World.create(scene, tex);
   const camp = Camp.create(scene, tex);
+  const finish = Finish.create(scene, tex);
+  const F = World.FINISH;
   // the thing behind you, and a second one for the figures you sometimes see ahead
   const chaser = Monster.create(scene, tex);
   const watcher = Monster.create(scene, tex);
 
   // ---- first-person flashlight + hand (low-poly viewmodel) ---------------
   const viewmodel = new THREE.Group();
+  const torch = new THREE.Group();     // the flashlight itself (you can put it down)
+  const handParts = new THREE.Group(); // the hand holding it
+  viewmodel.add(torch, handParts);
   const vmBase = { x: 0.24, y: -0.24 };
   const lensMat = new THREE.MeshBasicMaterial({ color: 0xfff4d0 });
   (function buildViewmodel() {
@@ -78,24 +87,24 @@
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x6a5a50 });
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6), metal);
     barrel.rotation.x = Math.PI / 2;
-    viewmodel.add(barrel);
+    torch.add(barrel);
     const head = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.034, 0.07, 6), metal);
     head.rotation.x = Math.PI / 2;
     head.position.z = -0.15;
-    viewmodel.add(head);
+    torch.add(head);
     const lens = new THREE.Mesh(new THREE.CircleGeometry(0.042, 6), lensMat);
     lens.position.z = -0.186;
-    viewmodel.add(lens);
+    torch.add(lens);
     const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.085, 0.11), skin);
     hand.position.set(0.01, -0.02, 0.03);
-    viewmodel.add(hand);
+    handParts.add(hand);
     const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.07), skin);
     thumb.position.set(-0.045, 0.02, 0.0);
     thumb.rotation.y = 0.3;
-    viewmodel.add(thumb);
+    handParts.add(thumb);
     const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.3), new THREE.MeshBasicMaterial({ color: 0x1c2230 }));
     sleeve.position.set(0.03, -0.04, 0.22);
-    viewmodel.add(sleeve);
+    handParts.add(sleeve);
     viewmodel.position.set(0.24, -0.24, -0.42);
     viewmodel.rotation.set(0.08, 0.12, 0);
     arm.add(viewmodel);
@@ -132,6 +141,15 @@
     try { localStorage.setItem('behindyou.best', String(v)); } catch (e) { /* ignore */ }
   }
   let best = loadBest();
+  function flag(name, set) {
+    try {
+      if (set) localStorage.setItem('behindyou.' + name, '1');
+      return localStorage.getItem('behindyou.' + name) === '1';
+    } catch (e) { return !!set; }
+  }
+  let bestEndless = 0;
+  try { bestEndless = parseInt(localStorage.getItem('behindyou.bestEndless') || '0', 10) || 0; } catch (e) { /* ignore */ }
+  let endlessUnlocked = flag('escaped');
 
   // has the player ever jumped over a log? (until then, a hint shows when one is coming)
   let learnedJump = false;
@@ -162,12 +180,12 @@
 
   function onDown(e) {
     Sfx.init();
-    // buttons and the settings panel handle their own taps
-    if (e.target.closest && e.target.closest('.btn, #settings')) return;
-    if (state === 'menu' && settingsOpen()) return;
+    // buttons and panels handle their own taps
+    if (e.target.closest && e.target.closest('.btn, .panel')) return;
+    if (state === 'menu' && panelOpen()) return;
     if (state === 'menu') startIntro();
-    // thumbs can already rest on the screen while you get up from the fire
-    if (state !== 'play' && state !== 'intro') return;
+    // thumbs can already rest on the screen while you get up from the fire (or out of the truck)
+    if (state !== 'play' && state !== 'intro' && state !== 'endlessIntro') return;
     if (e.target.closest && e.target.closest('#sprint')) {
       if (sprintBtn.id === null) {
         sprintBtn.id = e.pointerId;
@@ -216,13 +234,16 @@
     if (e.repeat) return;
     Sfx.init();
     if (state === 'menu') {
-      if (settingsOpen()) {
-        if (e.code === 'Escape' || e.code === 'Enter' || e.code === 'Space') showSettings(false);
+      if (panelOpen()) {
+        if (e.code === 'Escape') { showSettings(false); showLevels(false); }
       } else {
         startIntro(); // any key
       }
     } else if (state === 'over' && stateTime > 0.8) {
       if (e.code === 'Space' || e.code === 'Enter') runAgain();
+      else if (e.code === 'Escape' || e.code === 'KeyM') toMenu();
+    } else if (state === 'escaped' && stateTime > 0.8) {
+      if (e.code === 'Space' || e.code === 'Enter') startEndless();
       else if (e.code === 'Escape' || e.code === 'KeyM') toMenu();
     } else if (e.code === 'Space') {
       requestJump();
@@ -230,14 +251,85 @@
   });
 
   // ---- buttons ---------------------------------------------------------------
-  function settingsOpen() { return !ui.settings.classList.contains('hidden'); }
+  function panelOpen() {
+    return !ui.settings.classList.contains('hidden') || !ui.levels.classList.contains('hidden');
+  }
   function showSettings(open) {
     ui.settings.classList.toggle('hidden', !open);
+  }
+  function shakeEl(el) {
+    el.classList.remove('shake');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('shake');
   }
   ui.settingsBtn.addEventListener('click', () => showSettings(true));
   ui.settingsClose.addEventListener('click', () => showSettings(false));
   ui.againBtn.addEventListener('click', () => { if (state === 'over') runAgain(); });
   ui.menuBtn.addEventListener('click', () => { if (state === 'over') toMenu(); });
+
+  // levels
+  let shotTaken = false;
+  function showLevels(open) {
+    ui.levels.classList.toggle('hidden', !open);
+    if (!open) return;
+    if (!shotTaken) { snapshotCamp(ui.forestShot); shotTaken = true; }
+    ui.lvlEndless.classList.toggle('locked', !endlessUnlocked);
+  }
+  ui.levelsBtn.addEventListener('click', () => { if (state === 'menu') showLevels(true); });
+  ui.levelsClose.addEventListener('click', () => showLevels(false));
+  ui.lvlForest.addEventListener('click', e => {
+    if (e.target.closest('#lvlEndless') || state !== 'menu') return;
+    showLevels(false);
+    startIntro();
+  });
+  ui.lvlEndless.addEventListener('click', () => {
+    if (!endlessUnlocked) { shakeEl(ui.lvlEndless); return; }
+    showLevels(false);
+    startEndless();
+  });
+  document.querySelectorAll('.level-card.locked').forEach(card => {
+    Art.lockedCard(card.querySelector('canvas'));
+    card.addEventListener('click', () => shakeEl(card));
+  });
+  Art.lockedMini(ui.lvlEndless.querySelector('canvas'));
+
+  // the end of the level
+  ui.nextBtn.addEventListener('click', () => {
+    shakeEl(ui.nextBtn);
+    ui.comingSoon.classList.add('show');
+  });
+  ui.endlessBtn.addEventListener('click', () => { if (state === 'escaped') startEndless(); });
+  ui.escMenuBtn.addEventListener('click', () => { if (state === 'escaped') toMenu(); });
+
+  // The Forest's picture on its level card: the camp, rendered small, from the side.
+  function snapshotCamp(target) {
+    const w = target.width, h = target.height;
+    const rt = new THREE.WebGLRenderTarget(w, h);
+    const cam = new THREE.PerspectiveCamera(32, w / h, 0.05, 40);
+    cam.position.set(1.4, 1.2, -0.6);
+    cam.lookAt(0.9, 0.5, camp.fireZ + 1.8); // fire and tent on the right, the name on the left
+    const vmWasVisible = viewmodel.visible;
+    viewmodel.visible = false;
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, cam);
+    const pixels = new Uint8Array(w * h * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
+    renderer.setRenderTarget(null);
+    rt.dispose();
+    viewmodel.visible = vmWasVisible;
+    const ctx = target.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      img.data.set(pixels.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4); // it comes out upside down
+    }
+    ctx.putImageData(img, 0, 0);
+    // darker at the bottom left, for the name
+    const g = ctx.createLinearGradient(0, h, w * 0.7, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0.75)');
+    g.addColorStop(0.6, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
   window.addEventListener('keyup', e => { keys[e.code] = false; });
 
   function readInput() {
@@ -285,6 +377,11 @@
   // the camp: sitting by the fire, then the sound, then you run
   let introT = -1, introSide = 1, introLookYaw = Math.PI, introLookPitch = 0, introRunYaw = 0;
   let introBeats = 0, seat = 1, lightOn = false, vmRaise = 1, crackleTimer = 0;
+  // 'level': from the camp to the truck. 'endless': on from the truck, forever.
+  let mode = 'level';
+  let heardTruck = false;
+  // the truck scenes
+  let carT = -1, carScene = null, toastTime = 0;
 
   function setState(s) {
     state = s;
@@ -292,13 +389,29 @@
     ui.menu.classList.toggle('hidden', s !== 'menu' && s !== 'intro');
     ui.menu.classList.toggle('fade', s === 'intro');
     ui.over.classList.toggle('hidden', s !== 'over');
+    ui.escaped.classList.toggle('hidden', s !== 'escaped');
     ui.hud.classList.toggle('hidden', s !== 'play');
     ui.stick.classList.toggle('hidden', s !== 'play');
-    ui.sprint.classList.toggle('hidden', s !== 'play' && s !== 'intro');
+    ui.sprint.classList.toggle('hidden', s !== 'play' && s !== 'intro' && s !== 'endlessIntro');
   }
 
-  function resetRun() {
-    player.x = 0; player.d = 0; player.y = 0; player.vx = 0; player.vy = 0; player.speed = 0;
+  // where endless runs start: in front of the truck
+  const ENDLESS_X = -2.3, ENDLESS_D = 1998;
+
+  function resetRun(newMode) {
+    mode = newMode || 'level';
+    const endless = mode === 'endless';
+    player.x = endless ? ENDLESS_X : 0;
+    player.d = endless ? ENDLESS_D : 0;
+    player.y = 0; player.vx = 0; player.vy = 0; player.speed = 0;
+    heardTruck = false;
+    carT = -1; carScene = null;
+    restoreTorch();
+    finish.door.rotation.y = endless ? finish.DOOR_OPEN : 0;
+    finish.car.rotation.z = 0;
+    finish.setPower(0, 0);
+    ui.fade.style.opacity = '0';
+    ui.toast.classList.add('hidden');
     jumpBuffer = 0; jumpArmed = true;
     seat = 1; lightOn = false; vmRaise = 1; introT = -1;
     viewmodel.visible = false;
@@ -318,8 +431,8 @@
     ui.tunnel.style.transform = 'scale(2.4)';
     camera.fov = baseFov;
     camera.updateProjectionMatrix();
-    world.reset();
-    world.update(0);
+    world.reset(mode, player.d);
+    world.update(player.d);
     ui.staticCanvas.style.opacity = '0';
     ui.danger.style.opacity = '0';
   }
@@ -335,8 +448,10 @@
   let introLook1 = 0, introLook2 = 0;
 
   function startIntro() {
+    if (mode !== 'level') resetRun('level');
     placeStickIdle();
     showSettings(false);
+    showLevels(false);
     setState('intro');
     introT = 0;
     introBeats = 0;
@@ -397,7 +512,7 @@
 
   // After you've been caught: straight back on your feet and running, no camp scene.
   function runAgain() {
-    resetRun();
+    resetRun(mode);
     seat = 0;
     lightOn = true;
     viewmodel.visible = true;
@@ -410,10 +525,252 @@
 
   // Back to sitting by the fire.
   function toMenu() {
-    resetRun();
+    resetRun('level');
     setState('menu');
     Sfx.stopBreathing();
+    Sfx.engineStop(0.5);
     Sfx.setAmbience(0.9);
+  }
+
+  // ---- the truck ---------------------------------------------------------------
+  // points in the truck's own coordinates (front +z, driver's side +x)
+  const SEAT_EYE = [0.42, 1.58, 0.1];
+  const DOOR_STAND = [1.9, 1.6, -0.3];   // outside, clear of the door as it swings open
+  const PASSENGER_SEAT = [-0.45, 0.93, 0.05];
+  const FACE_FRONT = Math.PI / 2;        // the yaw that looks out of the windscreen
+  function carPos(p) { return finish.carPoint(p[0], p[1], p[2]); }
+
+  // the flashlight back in your hand, its light back on your arm
+  function restoreTorch() {
+    viewmodel.add(torch);
+    torch.position.set(0, 0, 0);
+    torch.quaternion.identity();
+    torch.scale.setScalar(1);
+    arm.add(flashlight);
+    flashlight.position.set(0.25, -0.25, 0);
+    arm.add(flashlight.target);
+    flashlight.target.position.set(0, -1.6, -10);
+    handParts.visible = true;
+  }
+  // the light now comes from the flashlight itself, wherever it is
+  function lightFromTorch() {
+    torch.attach(flashlight);
+    torch.attach(flashlight.target);
+    flashlight.position.set(0, 0, -0.2);
+    flashlight.target.position.set(0, -0.5, -4);
+  }
+  // lying on the passenger seat, shining at the dashboard
+  const seatQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 2.03, 0.35, 'YXZ'));
+  function torchOnSeat() {
+    scene.attach(torch);
+    torch.position.copy(carPos(PASSENGER_SEAT));
+    torch.quaternion.copy(seatQuat);
+    torch.scale.setScalar(viewmodel.scale.x);
+    lightFromTorch();
+  }
+  // the flashlight flying from one place to another (in its parent's coordinates)
+  function flyTorch(t0, t1, to, toQuat, arc) {
+    carScene.flight = {
+      t0: t0, t1: t1, arc: arc,
+      from: torch.position.clone(), fromQ: torch.quaternion.clone(), to: to, toQ: toQuat
+    };
+  }
+
+  // Made it. Walk to the door, get in, the flashlight goes on the seat, door shut, start her up.
+  function startEscape() {
+    setState('escape');
+    carT = 0;
+    stick.id = null; stick.x = stick.y = 0;
+    releaseSprint();
+    lookT = -1; lookAmount = 0; caughtYaw = 0; closeCall = false;
+    blackoutT = -1; flicker = 0; lightCut = 0;
+    chaser.root.visible = false;
+    watcher.root.visible = false;
+    watcherActive = false;
+    ui.hint.classList.add('hidden');
+    ui.danger.style.opacity = '0';
+    ui.tunnel.style.transform = 'scale(2.4)';
+    camera.fov = baseFov;
+    camera.updateProjectionMatrix();
+    Sfx.setBreathing(0.9);
+
+    const from = new THREE.Vector3(player.x, EYE_HEIGHT, -player.d);
+    const stand = carPos(DOOR_STAND);
+    const w = Math.max(0.6, Math.min(2.2, from.distanceTo(stand) / 4.5)); // walking to the door
+    const Y = FACE_FRONT;
+    carScene = {
+      from: from, yaw: body.rotation.y, pitch: -0.06, walk: w, door0: 0,
+      keys: [
+        { t: [0, w], pos: stand, yaw: 0, pitch: -0.12 },
+        { t: [w + 0.55, w + 1.3], pos: carPos(SEAT_EYE), yaw: Y, pitch: -0.05 },
+        { t: [w + 1.3, w + 1.6], yaw: Y - 1.15, pitch: -0.55 }, // watch it land on the seat
+        { t: [w + 2.0, w + 2.25], yaw: Y + 0.35, pitch: -0.05 }, // reach for the door
+        { t: [w + 2.5, w + 2.8], yaw: Y, pitch: -0.02 }
+      ],
+      door: [[w + 0.05, w + 0.5, finish.DOOR_OPEN], [w + 2.05, w + 2.3, 0]],
+      events: [
+        [w + 0.05, () => Sfx.doorOpen()],
+        [w + 1.45, () => {
+          scene.attach(torch);
+          lightFromTorch();
+          vmRaise = 0;
+          flyTorch(w + 1.45, w + 1.9, carPos(PASSENGER_SEAT), seatQuat, 0.25);
+        }],
+        [w + 1.6, () => { handParts.visible = false; }],
+        [w + 1.9, () => Sfx.drop()],
+        [w + 2.3, () => { Sfx.slam(); shake = 0.35; Sfx.setBreathing(0.6); }],
+        [w + 2.7, () => Sfx.key()],
+        [w + 2.9, () => { Sfx.crank(1.1, true); carScene.power = [0.3, 0]; }],
+        [w + 4.0, () => { carScene.rumble = true; shake = 0.25; carScene.power = [1, 1]; }]
+      ],
+      fadeOut: [w + 4.3, w + 5.6],
+      end: w + 6.1,
+      done: finishEscape
+    };
+  }
+
+  function finishEscape() {
+    flag('escaped', true);
+    endlessUnlocked = true;
+    if (F.length > best) { best = F.length; saveBest(best); }
+    ui.comingSoon.classList.remove('show');
+    setState('escaped');
+    Sfx.engineStop(2.5);
+    Sfx.stopBreathing();
+  }
+
+  // Endless: you're back in the truck. It won't start. Something lands in the back. Run.
+  function startEndless() {
+    const first = !flag('endlessSeen');
+    resetRun('endless');
+    setState('endlessIntro');
+    carT = 0;
+    finish.door.rotation.y = 0;
+    lightOn = true;
+    viewmodel.visible = true;
+    vmRaise = 1;
+    torchOnSeat();
+    handParts.visible = false;
+    ui.fade.style.opacity = '1';
+    Sfx.engineStop(0.2);
+    Sfx.setAmbience(0.6);
+    Sfx.startBreathing();
+    Sfx.setBreathing(0.5);
+    placeStickIdle();
+
+    const Y = FACE_FRONT;
+    const seatEye = carPos(SEAT_EYE), stand = carPos(DOOR_STAND);
+    const backOff = new THREE.Vector3(stand.x, EYE_HEIGHT, -(ENDLESS_D));
+    const exit = new THREE.Vector3(ENDLESS_X, EYE_HEIGHT, -ENDLESS_D);
+    carScene = {
+      from: seatEye, yaw: Y, pitch: -0.04, door0: 0,
+      keys: [
+        { t: [4.85, 5.1], yaw: Y + 2.0, pitch: 0.05 },          // what was that? (towards the back)
+        { t: [5.3, 5.55], yaw: Y - 1.15, pitch: -0.55 },        // the flashlight
+        { t: [5.95, 6.35], pos: stand, yaw: 0.3, pitch: -0.05 }, // out
+        { t: [6.35, 6.6], pos: backOff },                        // round the open door
+        { t: [6.55, 7.1], pos: exit, yaw: 0, pitch: -0.06 }      // and across the road
+      ],
+      door: [[5.8, 6.05, finish.DOOR_OPEN]],
+      events: [
+        [0.7, () => Sfx.key()],
+        [0.9, () => { Sfx.crank(1.3, false); carScene.power = [0.3, 0]; carScene.sputter = true; }],
+        [2.6, () => { carScene.power = [0, 0]; carScene.sputter = false; }],
+        [3.1, () => Sfx.key()],
+        [3.3, () => { Sfx.crank(0.8, false); carScene.power = [0.25, 0]; carScene.sputter = true; }],
+        [4.45, () => { carScene.power = [0, 0]; carScene.sputter = false; }],
+        [4.8, () => {
+          Sfx.thump();
+          Sfx.setAmbience(0);
+          Sfx.heartbeat(0.7);
+          Sfx.setBreathing(0.95);
+          shake = 0.5;
+          beatPulse = 1;
+          carScene.rockAt = 4.8;
+        }],
+        [5.2, () => Sfx.heartbeat(0.6)],
+        [5.55, () => {
+          handParts.visible = true;
+          viewmodel.attach(torch);
+          flyTorch(5.55, 5.85, new THREE.Vector3(), new THREE.Quaternion(), 0.1);
+        }],
+        [5.6, () => Sfx.heartbeat(0.6)],
+        [5.8, () => Sfx.doorOpen()]
+      ],
+      fadeIn: [0, 1.0],
+      end: 7.1,
+      done: () => {
+        restoreTorch();
+        setState('play');
+        player.speed = 3;
+        Sfx.setAmbience(0.9);
+        if (first) {
+          flag('endlessSeen', true);
+          ui.toast.classList.remove('hidden');
+          toastTime = 4.6;
+        }
+      }
+    };
+  }
+
+  // Plays whichever truck scene is on: moves your head, the door, the flashlight, the fade.
+  function updateCarScene(dt) {
+    const sc = carScene;
+    const t0 = carT;
+    carT += dt;
+    sc.events.forEach(ev => { if (t0 < ev[0] && carT >= ev[0]) ev[1](); });
+
+    const pos = sc.from.clone();
+    let yaw = sc.yaw, pitch = sc.pitch;
+    sc.keys.forEach(k => {
+      const a = smooth(k.t[0], k.t[1], carT);
+      if (k.pos) pos.lerp(k.pos, a);
+      if (k.yaw !== undefined) yaw += (k.yaw - yaw) * a;
+      if (k.pitch !== undefined) pitch += (k.pitch - pitch) * a;
+    });
+    if (sc.walk && carT < sc.walk) pos.y += Math.abs(Math.sin(carT * 9)) * 0.05; // hurrying to the door
+    shake = Math.max(0, shake - dt);
+    const tr = shake * 0.12 + (sc.rumble ? 0.005 : 0);
+    body.position.set(pos.x + (Math.random() - 0.5) * tr, pos.y + (Math.random() - 0.5) * tr, pos.z);
+    body.rotation.set(pitch, yaw, 0);
+    camera.rotation.set(0, 0, 0);
+    arm.rotation.set(0, 0, 0);
+    ambient.intensity = AMBIENT;
+
+    if (sc.power) {
+      const flick = sc.sputter && Math.random() < 0.4 ? 0.3 : 1;
+      finish.setPower(sc.power[0] * flick, sc.power[1]);
+    }
+
+    let door = sc.door0;
+    sc.door.forEach(d => { door += (d[2] - door) * smooth(d[0], d[1], carT); });
+    finish.door.rotation.y = door;
+    if (sc.rockAt !== undefined) {
+      const k = carT - sc.rockAt;
+      finish.car.rotation.z = k > 0 ? Math.sin(k * 16) * 0.045 * Math.exp(-k * 2.5) : 0;
+    }
+
+    const f = sc.flight;
+    if (f) {
+      const a = smooth(f.t0, f.t1, carT);
+      torch.position.lerpVectors(f.from, f.to, a);
+      torch.position.y += Math.sin(Math.PI * a) * f.arc;
+      torch.quaternion.slerpQuaternions(f.fromQ, f.toQ, a);
+    }
+
+    vmRaise = handParts.visible ? Math.max(0, vmRaise - dt * 3) : Math.min(1, vmRaise + dt * 3);
+    viewmodel.position.set(vmBase.x, vmBase.y - vmRaise * vmRaise * 0.3, -0.42);
+    flashlight.intensity = 2.4 * (0.97 + Math.random() * 0.03);
+    lensMat.color.setScalar(1);
+
+    if (sc.fadeOut) ui.fade.style.opacity = smooth(sc.fadeOut[0], sc.fadeOut[1], carT).toFixed(3);
+    if (sc.fadeIn) ui.fade.style.opacity = (1 - smooth(sc.fadeIn[0], sc.fadeIn[1], carT)).toFixed(3);
+    beatPulse = Math.max(0, beatPulse - dt * 4);
+
+    if (carT >= sc.end) {
+      carScene = null;
+      sc.done();
+    }
   }
 
   function caught() {
@@ -435,14 +792,27 @@
   }
 
   function finishCaught() {
-    const dist = Math.max(0, Math.floor(player.d));
-    if (dist > best) { best = dist; saveBest(best); }
-    ui.result.textContent = 'You ran ' + dist + ' meters.';
-    ui.best.textContent = 'Furthest: ' + best + ' m';
+    const dist = runDistance();
+    if (mode === 'endless') {
+      if (dist > bestEndless) {
+        bestEndless = dist;
+        try { localStorage.setItem('behindyou.bestEndless', String(dist)); } catch (e) { /* ignore */ }
+      }
+      ui.result.textContent = 'You ran ' + dist + ' meters past the truck.';
+      ui.best.textContent = 'Furthest (endless): ' + bestEndless + ' m';
+    } else {
+      if (dist > best) { best = dist; saveBest(best); }
+      ui.result.textContent = 'You ran ' + dist + ' of ' + F.length + ' meters.';
+      ui.best.textContent = 'Furthest: ' + best + ' m';
+    }
     setState('over');
     chaser.root.visible = false;
     ui.tunnel.style.transform = 'scale(2.4)';
     Sfx.setAmbience(0.6);
+  }
+
+  function runDistance() {
+    return Math.max(0, Math.floor(player.d - (mode === 'endless' ? ENDLESS_D : 0)));
   }
 
   // ---- static noise (only drawn while getting caught) ------------------------
@@ -492,6 +862,18 @@
 
     world.update(player.d);
 
+    // made it: the truck
+    if (mode === 'level' && player.d >= F.carD - 3.3) {
+      startEscape();
+      return;
+    }
+    // almost there: a lorry goes by on the highway somewhere ahead
+    if (mode === 'level' && !heardTruck && player.d > 1850) {
+      heardTruck = true;
+      Sfx.passingTruck();
+    }
+    const finale = mode === 'level' && player.d > 1700;
+
     // jumping (over fallen logs)
     jumpBuffer -= dt;
     if (jumpBuffer > 0 && player.y <= 0 && player.stumble <= 0) {
@@ -534,7 +916,7 @@
     // Chase moods: sometimes it falls back and things calm down... then it's suddenly much closer.
     paceTimer -= dt;
     if (paceTimer <= 0) {
-      if (paceState === 'normal' && player.d > 250 && Math.random() < 0.6) {
+      if (paceState === 'normal' && player.d > 250 && !finale && Math.random() < 0.6) {
         paceState = 'lull';
         pace = 0.75;
         paceTimer = 7 + Math.random() * 4;
@@ -555,7 +937,7 @@
     // The thing behind you. It waits a moment, then never stops.
     // Looking back costs you: it gains on you while you look.
     if (runTime > 2.5) {
-      const chaserSpeed = base * (0.94 + diff * 0.14) * pace;
+      const chaserSpeed = base * (0.94 + Math.min(diff, 1) * 0.14) * pace;
       const lookCost = closeCall ? 0 : lookAmount * LOOK_PENALTY;
       gap += (player.speed - chaserSpeed - lookCost) * dt;
       gap = Math.min(gap, MAX_GAP);
@@ -618,7 +1000,7 @@
     // The flashlight sometimes dies for a second or two: run blind and trust the path.
     if (blackoutT < 0) {
       blackoutTimer -= dt;
-      if (blackoutTimer <= 0 && player.d > 150 && lookT < 0) {
+      if (blackoutTimer <= 0 && player.d > 150 && lookT < 0 && !(mode === 'level' && player.d > 1900)) {
         blackoutT = 0;
         blackoutOff = 1 + Math.random();
       }
@@ -633,7 +1015,7 @@
     // Fake-outs: a figure standing between the trees ahead, watching. The light flickers... gone.
     if (!watcherActive) {
       watcherTimer -= dt;
-      if (watcherTimer <= 0 && player.d > 250 && lookT < 0 && blackoutT < 0) {
+      if (watcherTimer <= 0 && player.d > 250 && lookT < 0 && blackoutT < 0 && !(mode === 'level' && player.d > 1880)) {
         watcherActive = true;
         watcherD = player.d + 22;
         watcherX = Math.max(-12, Math.min(12, player.x + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 4)));
@@ -665,7 +1047,7 @@
     camera.updateProjectionMatrix();
 
     // HUD
-    ui.distance.textContent = Math.max(0, Math.floor(player.d)) + ' m';
+    ui.distance.textContent = runDistance() + ' m';
     // stamina: the ring around the sprint button
     ui.sprintRing.style.strokeDashoffset = (SPRINT_RING * (1 - player.stamina)).toFixed(1);
     ui.sprint.classList.toggle('low', player.stamina < 0.25 || player.tired);
@@ -826,7 +1208,16 @@
       world.update(player.d);
     } else if (state === 'intro') {
       updateIntro(dt);
+    } else if (state === 'escape' || state === 'endlessIntro') {
+      updateCarScene(dt);
     }
+    if (toastTime > 0) {
+      toastTime -= dt;
+      if (toastTime <= 0) ui.toast.classList.add('hidden');
+    }
+
+    // the highway lamp, glowing through the trees
+    finish.update(dt, body.position);
 
     // the campfire: still burning back there after you've run
     camp.update(dt, body.position);
@@ -845,7 +1236,7 @@
     }
 
     if (state === 'menu' || state === 'intro') updateCampCamera(dt);
-    else if (state !== 'over') updateCamera(dt);
+    else if (state === 'play' || state === 'caught') updateCamera(dt);
     renderer.render(scene, camera);
   }
 
@@ -869,5 +1260,6 @@
     closeCall: () => { player.hitCooldown = 0; startLook(1.1, 0.15, true, true); },
     blackout: () => { blackoutTimer = 0; }, watcher: () => { watcherTimer = 0; player.d = Math.max(player.d, 260); },
     player: player, getGap: () => gap, getState: () => state, input: input, stick: stick,
-    jump: requestJump, places: () => world.places(), logAhead: () => world.logAhead(player.d), introT: () => introT };
+    jump: requestJump, escape: () => { player.d = 1990; player.x = 1; },
+    endless: () => startEndless(), state: () => state, carT: () => carT, places: () => world.places(), logAhead: () => world.logAhead(player.d), introT: () => introT };
 })();

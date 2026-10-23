@@ -205,5 +205,105 @@ html, body {
   animation: blink 0.8s steps(2) infinite;
 }
 
+/* black fade (end of the level, the start of endless) */
+#fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: max(64px, calc(env(safe-area-inset-top) + 52px));
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: #e8dcb8;
+  text-shadow: 2px 2px 0 #000;
+  pointer-events: none;
+  animation: toast 4.5s forwards;
+}
+@keyframes toast { 0% { opacity: 0; } 10%, 75% { opacity: 1; } 100% { opacity: 0; } }
+
+.btn.corner {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  padding: 12px 12px;
+  font-size: 14px;
+}
+
+/* ---- levels ---- */
+#levels { overflow-y: auto; justify-content: flex-start; }
+#levels h2 { font-size: 24px; letter-spacing: 6px; margin: 24px 0 18px; text-shadow: 3px 3px 0 #300; }
+.level-list { width: min(100%, 440px); }
+.level-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 192 / 60;
+  margin-bottom: 16px;
+  border: 2px solid rgba(216,210,192,0.6);
+  box-shadow: 3px 3px 0 #000;
+  background: #000;
+  overflow: hidden;
+  cursor: pointer;
+}
+.level-card.locked { border-color: #1c1c1a; cursor: default; }
+canvas.art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.level-label {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 17px;
+  text-align: left;
+  text-shadow: 2px 2px 0 #000;
+}
+.level-label b { color: #f0e4c0; }
+.mini {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 96px;
+  height: 32px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #d8d2c0;
+  background: rgba(0,0,0,0.65);
+  border: 2px solid rgba(216,210,192,0.6);
+  box-shadow: 2px 2px 0 #000;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+.mini canvas { display: none; }
+.mini.locked { border-color: #1c1c1a; cursor: default; }
+.mini.locked canvas { display: block; }
+.mini.locked span { display: none; }
+.shake { animation: shake 0.35s; }
+@keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(2px); } }
+
+/* ---- escaped ---- */
+#escaped { animation: fadein 1.2s; }
+@keyframes fadein { from { opacity: 0; } }
+#escaped h1 { color: #e8dcb8; }
+.locked-btn { opacity: 0.55; display: inline-flex; align-items: center; gap: 10px; margin-top: 10px; }
+.locked-btn .lock { width: 12px; height: 17px; fill: #d8d2c0; }
+#comingSoon { visibility: hidden; margin: 10px 0 0; letter-spacing: 3px; }
+#comingSoon.show { visibility: visible; }
+#escaped .buttons { margin-top: 18px; }
+
 .hidden { display: none !important; }
 .overlay.solid { background: #000; }

@@ -10,6 +10,7 @@
   let breathBuf = null, breathSrc = null, breathGain = null;
   let chirpBufs = [];
   let fireGain = null, fireLevel = 0;
+  let engine = null;
 
   function init() {
     if (ctx) {
@@ -230,6 +231,114 @@
     land: function () {
       noise(0.14, 'bandpass', 1100, 0.8, 0.22);
       noise(0.12, 'lowpass', 180, 1, 0.3);
+    },
+    // ---- the truck ----------------------------------------------------------
+    doorOpen: function () {
+      noise(0.05, 'bandpass', 1800, 2, 0.3);                       // the latch
+      tone(520, 380, 0.35, 0.05, 'sawtooth', 0.06);                // the hinge creaks
+      tone(610, 450, 0.25, 0.03, 'sawtooth', 0.2);
+    },
+    slam: function () {
+      tone(90, 40, 0.3, 0.6, 'triangle');
+      noise(0.25, 'lowpass', 700, 1, 0.6);
+      noise(0.06, 'bandpass', 2500, 2, 0.25, 0, 0.01);
+    },
+    // the flashlight landing on the seat
+    drop: function () {
+      noise(0.1, 'lowpass', 400, 1, 0.35);
+      noise(0.03, 'bandpass', 2000, 2, 0.12, 0, 0.02);
+    },
+    key: function () {
+      noise(0.015, 'bandpass', 3500, 3, 0.3);
+      noise(0.02, 'bandpass', 2800, 3, 0.25, 0, 0.12);
+    },
+    // the starter turning the engine over: rr-rr-rr. dur in seconds.
+    // catches: the engine starts at the end. If not, it coughs and dies.
+    crank: function (dur, catches) {
+      if (!ctx) return;
+      const n = Math.floor(dur / 0.13);
+      for (let i = 0; i < n; i++) {
+        const t = i * 0.13 + (catches ? 0 : Math.random() * 0.04);
+        noise(0.1, 'lowpass', 520, 1.2, 0.32, 0, t);
+        tone(95, 70, 0.09, 0.18, 'sawtooth', t);
+      }
+      if (catches) {
+        window.Sfx.engineStart(dur);
+      } else {
+        // a couple of sputters, then nothing
+        tone(55, 35, 0.18, 0.4, 'square', dur + 0.05);
+        noise(0.12, 'lowpass', 300, 1, 0.4, 0, dur + 0.05);
+        tone(50, 30, 0.25, 0.3, 'square', dur + 0.35);
+        noise(0.08, 'bandpass', 1200, 1, 0.12, 0, dur + 0.7);
+      }
+    },
+    // the engine running: a low, rough rumble
+    engineStart: function (delay) {
+      if (!ctx || engine) return;
+      const t = now() + (delay || 0);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.5, t + 0.08);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.9);
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 260;
+      const oscs = [36, 72.5, 18.2].map((fr, i) => {
+        const o = ctx.createOscillator();
+        o.type = i === 1 ? 'square' : 'sawtooth';
+        o.frequency.setValueAtTime(fr * 1.6, t);
+        o.frequency.exponentialRampToValueAtTime(fr, t + 0.9); // revs, then settles
+        o.connect(f);
+        o.start(t);
+        return o;
+      });
+      f.connect(g);
+      g.connect(master);
+      engine = { g: g, oscs: oscs };
+    },
+    engineStop: function (fade) {
+      if (!engine) return;
+      const t = now();
+      engine.g.gain.cancelScheduledValues(t);
+      engine.g.gain.setTargetAtTime(0.0001, t, (fade || 1) / 4);
+      engine.oscs.forEach(o => o.stop(t + (fade || 1) + 0.1));
+      engine = null;
+    },
+    // something heavy landing in the back of the truck
+    thump: function () {
+      tone(70, 30, 0.45, 0.8, 'triangle');
+      noise(0.4, 'lowpass', 500, 1, 0.8);
+      noise(0.15, 'bandpass', 900, 1, 0.3, 0, 0.03);
+      noise(0.5, 'lowpass', 300, 1, 0.25, 0, 0.35); // the springs settling
+    },
+    // a lorry going by on the highway, somewhere ahead
+    passingTruck: function () {
+      if (!ctx) return;
+      const t = now();
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 220;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 2.5);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 6);
+      src.connect(f);
+      f.connect(g);
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        p.pan.setValueAtTime(-0.8, t);
+        p.pan.linearRampToValueAtTime(0.8, t + 6);
+        g.connect(p);
+        p.connect(master);
+      } else {
+        g.connect(master);
+      }
+      src.start(t);
+      src.stop(t + 6.2);
+      tone(58, 52, 5, 0.06, 'sawtooth', 0.5);
     },
     heartbeat: function (vol) {
       tone(55, 40, 0.12, vol);

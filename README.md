@@ -5,6 +5,11 @@ Something is chasing you. You will never see what it is.
 
 ## How to play
 
+**Level 1: The Forest.** Your truck is parked by the highway, 2000 meters away. Make it there.
+The last few hundred meters are the hardest. When you see the orange streetlight through the trees, you're close.
+After you escape once, **Endless** unlocks (on the escape screen, and on The Forest's card under LEVELS):
+the truck won't start, and you run on into the forest past the road, as far as you can.
+
 You start sitting by your campfire. Tap (or press any key) to look around: something is out there in the dark. Then you run.
 The gear button on the start screen shows the controls. After you're caught, RUN AGAIN puts you straight back on your feet,
 MAIN MENU takes you back to the fire.
@@ -41,6 +46,8 @@ There is always an open way through the trees, even when the forest gets thick.
 - `js/props.js`: fallen logs and the abandoned places (cabin, car, fence, tent)
 - `js/world.js`: the forest (trees, logs, places, the always-open path, collisions)
 - `js/camp.js`: the campfire you start at
+- `js/finish.js`: the end of the level: the highway, the streetlight, your truck
+- `js/art.js`: pixel art for the menus (the chained, padlocked levels)
 - `js/monster.js`: the thing that follows you
 - `js/game.js`: the player, flashlight, the chaser, controls and main loop
 - `lib/three.min.js`: the [three.js](https://threejs.org) 3D library (r128, MIT license)
