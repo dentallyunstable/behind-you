@@ -261,6 +261,7 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 - **The last 250 m difficulty** (Level 1) was played by the owner: it feels fine, leave it.
 - **Level 2 has not been played by the owner yet.** Ask how it feels: speed, how hard the brake/stall is, how often deer and lunges come, how much damage things do, how big the mirror is, whether the wet-glass blur is too much.
 - **The end of The Highway is a placeholder** (fade to black). The owner will decide where the highway leads; that also decides Level 3. Ideas offered earlier: a collapsed bridge with a boat below (a new vehicle each level), running out of fuel at an abandoned gas station, a crash blocking a tunnel.
+- **Test branch "1800"** (on GitHub): a copy where runs in The Forest start at 1800 m (camp scene first, RUN AGAIN too), for trying the last stretch and the escape. Made from this branch on request; it doesn't get later changes unless they're merged into it.
 - **More obstacles and difficulties for Level 2** were requested "later, not now" by the owner.
 - **No endless mode for Level 2** yet.
 - **Level 3 doesn't exist.** Its card says "Reach 9000 m on The Highway to unlock" / "Coming soon". A new level needs: its own world and finish, a menu scene (continuing from where the last level ended), a card picture, unlock wiring, and the next card's unlock text.
