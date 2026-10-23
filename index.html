@@ -36,23 +36,36 @@
 
 <!-- menus -->
 <div id="menu" class="overlay camp">
-  <div>
-    <h1>BEHIND YOU</h1>
-    <p class="sub">Something is following you.<br>Don't stop. Don't look back.</p>
+  <button id="settingsBtn" class="btn icon" aria-label="Settings">
+    <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><path d="M4 0h4v1h-4zM1 1h2v1h-2zM4 1h4v1h-4zM9 1h2v1h-2zM1 2h10v1h-10zM2 3h8v1h-8zM0 4h4v1h-4zM8 4h4v1h-4zM0 5h4v1h-4zM8 5h4v1h-4zM0 6h4v1h-4zM8 6h4v1h-4zM0 7h4v1h-4zM8 7h4v1h-4zM2 8h8v1h-8zM1 9h10v1h-10zM1 10h2v1h-2zM4 10h4v1h-4zM9 10h2v1h-2zM4 11h4v1h-4z"/></svg>
+  </button>
+  <p id="lookText" class="blink">Tap to look around.</p>
+</div>
+
+<div id="settings" class="overlay solid hidden">
+  <h2>CONTROLS</h2>
+  <div class="controls">
+    <h3>PHONE</h3>
+    <p>Drag your thumb anywhere: the joystick</p>
+    <p>&larr; &rarr; steer<br>&uarr; push up to jump<br>&darr; pull down to slow down</p>
+    <p>Hold <b>FASTER</b> (bottom right) with your other thumb to sprint</p>
+    <h3>COMPUTER</h3>
+    <p>&larr; &rarr; or A D: steer<br>&uarr; W or Space: jump<br>&darr; or S: slow down<br>Shift: sprint</p>
+    <h3>STAMINA</h3>
+    <p>The ring around FASTER is your stamina. Use it all up and you'll be out of breath: slower than your normal run until you catch your breath.</p>
+    <p class="small">Headphones recommended</p>
   </div>
-  <div>
-    <p class="help">Drag with your thumb: &larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; jump &nbsp;&middot;&nbsp; &darr; slow down<br>Hold FASTER with your other thumb to sprint<br>Use it all up and you'll be out of breath</p>
-    <p class="help small">Headphones recommended</p>
-    <p class="blink">TAP TO RUN</p>
-    <p id="bestMenu" class="small"></p>
-  </div>
+  <button id="settingsClose" class="btn">BACK</button>
 </div>
 
 <div id="over" class="overlay solid hidden">
   <h1 class="red">IT CAUGHT YOU</h1>
   <p id="result" class="sub"></p>
   <p id="best" class="small"></p>
-  <p class="blink">TAP TO RUN AGAIN</p>
+  <div class="buttons">
+    <button id="againBtn" class="btn">RUN AGAIN</button>
+    <button id="menuBtn" class="btn">MAIN MENU</button>
+  </div>
 </div>
 
 <script src="lib/three.min.js"></script>

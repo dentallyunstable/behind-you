@@ -5,7 +5,9 @@ Something is chasing you. You will never see what it is.
 
 ## How to play
 
-You start sitting by your campfire. Tap, and something moves out there in the dark. Then you run.
+You start sitting by your campfire. Tap (or press any key) to look around: something is out there in the dark. Then you run.
+The gear button on the start screen shows the controls. After you're caught, RUN AGAIN puts you straight back on your feet,
+MAIN MENU takes you back to the fire.
 
 Open `index.html` in any browser (phone or computer). No install is needed.
 

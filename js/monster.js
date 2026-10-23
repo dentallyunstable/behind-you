@@ -14,7 +14,7 @@
     const skin = new THREE.MeshLambertMaterial({ map: tex.monsterSkin });
     const faceMat = new THREE.MeshLambertMaterial({ map: tex.monsterFace });
     // the eyes ignore fog and light: far away in the dark, they're all you see
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xf2eed6, fog: false });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xf2eed6, fog: false, polygonOffset: true, polygonOffsetFactor: -4 });
 
     const root = new THREE.Group();
     const hips = new THREE.Group();
@@ -71,7 +71,7 @@
     // box sides: +x, -x, +y, -y, +z (the face), -z
     head.add(new THREE.Mesh(headGeo, [skin, skin, skin, skin, faceMat, skin]));
     const eyes = new THREE.Group();
-    eyes.position.set(0, 0.25, 0.142);
+    eyes.position.set(0, 0.25, 0.155); // a little in front of the face, so far away it never covers them
     head.add(eyes);
     [-1, 1].forEach(side => {
       const eye = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.03), eyeMat);

@@ -23,7 +23,9 @@
   const ui = {
     hud: $('hud'), distance: $('distance'), sprint: $('sprint'), sprintRing: $('sprintRing'),
     stick: $('stick'), knob: $('knob'), menu: $('menu'), over: $('over'),
-    result: $('result'), best: $('best'), bestMenu: $('bestMenu'),
+    result: $('result'), best: $('best'), lookText: $('lookText'),
+    settings: $('settings'), settingsBtn: $('settingsBtn'), settingsClose: $('settingsClose'),
+    againBtn: $('againBtn'), menuBtn: $('menuBtn'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
   };
 
@@ -130,16 +132,13 @@
     try { localStorage.setItem('behindyou.best', String(v)); } catch (e) { /* ignore */ }
   }
   let best = loadBest();
-  function showBestMenu() {
-    ui.bestMenu.textContent = best > 0 ? 'Furthest: ' + best + ' m' : '';
-  }
-  showBestMenu();
 
   // has the player ever jumped over a log? (until then, a hint shows when one is coming)
   let learnedJump = false;
   try { learnedJump = localStorage.getItem('behindyou.jumped') === '1'; } catch (e) { /* ignore */ }
   const touchScreen = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   ui.hint.textContent = touchScreen ? 'PUSH UP TO JUMP' : 'SPACE TO JUMP';
+  ui.lookText.textContent = touchScreen ? 'Tap to look around.' : 'Press any key to look around.';
 
   // ---- input: a floating joystick and a sprint button (+ keyboard on computers) --
   // joystick: left/right steer, push up to jump, pull down to slow down
@@ -163,9 +162,10 @@
 
   function onDown(e) {
     Sfx.init();
-    if (state === 'menu' || (state === 'over' && stateTime > 0.8)) {
-      startIntro();
-    }
+    // buttons and the settings panel handle their own taps
+    if (e.target.closest && e.target.closest('.btn, #settings')) return;
+    if (state === 'menu' && settingsOpen()) return;
+    if (state === 'menu') startIntro();
     // thumbs can already rest on the screen while you get up from the fire
     if (state !== 'play' && state !== 'intro') return;
     if (e.target.closest && e.target.closest('#sprint')) {
@@ -213,13 +213,31 @@
 
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
-    if ((e.code === 'Space' || e.code === 'Enter') && (state === 'menu' || (state === 'over' && stateTime > 0.8))) {
-      Sfx.init();
-      startIntro();
-    } else if (e.code === 'Space' && !e.repeat) {
+    if (e.repeat) return;
+    Sfx.init();
+    if (state === 'menu') {
+      if (settingsOpen()) {
+        if (e.code === 'Escape' || e.code === 'Enter' || e.code === 'Space') showSettings(false);
+      } else {
+        startIntro(); // any key
+      }
+    } else if (state === 'over' && stateTime > 0.8) {
+      if (e.code === 'Space' || e.code === 'Enter') runAgain();
+      else if (e.code === 'Escape' || e.code === 'KeyM') toMenu();
+    } else if (e.code === 'Space') {
       requestJump();
     }
   });
+
+  // ---- buttons ---------------------------------------------------------------
+  function settingsOpen() { return !ui.settings.classList.contains('hidden'); }
+  function showSettings(open) {
+    ui.settings.classList.toggle('hidden', !open);
+  }
+  ui.settingsBtn.addEventListener('click', () => showSettings(true));
+  ui.settingsClose.addEventListener('click', () => showSettings(false));
+  ui.againBtn.addEventListener('click', () => { if (state === 'over') runAgain(); });
+  ui.menuBtn.addEventListener('click', () => { if (state === 'over') toMenu(); });
   window.addEventListener('keyup', e => { keys[e.code] = false; });
 
   function readInput() {
@@ -306,57 +324,96 @@
     ui.danger.style.opacity = '0';
   }
 
-  // Tap: a branch snaps somewhere past the fire. You turn... two eyes. You get up and run.
+  // The camp scene, timed in seconds from the tap:
+  // you sit a while... a twig cracks... you look towards it, nothing... the other way, nothing...
+  // you turn back, and there are two eyes where you just looked. Then you get up and run.
+  const INTRO = {
+    snap: 2.0,
+    look1: [2.25, 2.6], look2: [2.9, 3.35], find: [3.6, 4.0],
+    stand: [5.05, 5.65], turn: [5.1, 5.8], hide: 5.3, light: 5.45, run: 5.8
+  };
+  let introLook1 = 0, introLook2 = 0;
+
   function startIntro() {
-    if (state === 'over') resetRun();
     placeStickIdle();
+    showSettings(false);
     setState('intro');
     introT = 0;
     introBeats = 0;
+    // where it stands; the crack comes from there
     introSide = Math.random() < 0.5 ? -1 : 1;
     const e = World.CAMP.eyes[introSide > 0 ? 1 : 0];
-    // which way to turn your head to look at it (seated, facing the fire = PI)
+    // seated, facing the fire = yaw PI; turning towards +x makes the yaw bigger
     introLookYaw = Math.atan2(-e.x, e.d);
     if (introLookYaw < 0) introLookYaw += Math.PI * 2;
+    // look towards the sound (it's too dark, you miss it), then the other way, then back: there it is
+    introLook1 = Math.PI + (introLookYaw - Math.PI) * 0.8;
+    introLook2 = Math.PI - introSide * 0.9;
     introLookPitch = Math.atan2(2.7 - SIT_EYE, Math.hypot(e.x, e.d));
     // then turn away from it to run (the forward direction is yaw 0, or a full turn)
     introRunYaw = introLookYaw > Math.PI ? Math.PI * 2 : 0;
     chaser.setMode('still');
     chaser.place(e.x, 0, -e.d, 0, 0, 3);
-    chaser.root.visible = true;
+    chaser.root.visible = false;
   }
 
   function updateIntro(dt) {
     const t0 = introT;
     introT += dt;
     const at = time => t0 < time && introT >= time;
-    if (at(0.15)) {
-      // the sound comes from where it stands (seated facing the fire, your right is -x)
-      Sfx.snap(-introSide * 0.75);
+    if (at(INTRO.snap)) {
+      // seated facing the fire, +x is on your left
+      Sfx.snap(-introSide * 0.8);
       Sfx.setAmbience(0); // the crickets go quiet
     }
-    if (at(0.9) || at(1.3) || at(1.62) || at(1.9)) {
-      Sfx.heartbeat(0.45 + introBeats * 0.08);
+    if (at(INTRO.snap + 0.45)) {
+      Sfx.heartbeat(0.3);
+      Sfx.startBreathing();
+      Sfx.setBreathing(0.35);
+    }
+    // it was there all along, somewhere you'd just looked
+    if (at(INTRO.find[0])) chaser.root.visible = true;
+    const beats = [4.0, 4.4, 4.75, 5.05, 5.32];
+    if (beats.some(b => at(b))) {
+      Sfx.heartbeat(0.45 + introBeats * 0.06);
       introBeats++;
       beatPulse = 1;
     }
-    if (at(1.0)) {
-      Sfx.startBreathing();
-      Sfx.setBreathing(0.75);
-    }
+    if (at(4.1)) Sfx.setBreathing(0.8);
     chaser.update(dt);
-    if (at(2.05)) chaser.root.visible = false; // you've turned away: you never see it leave
-    if (at(2.15)) {
+    if (at(INTRO.hide)) chaser.root.visible = false; // you've turned away: you never see it leave
+    if (at(INTRO.light)) {
       lightOn = true;
       viewmodel.visible = true;
       Sfx.click();
     }
     beatPulse = Math.max(0, beatPulse - dt * 4);
-    if (introT >= 2.45) {
+    if (introT >= INTRO.run) {
       setState('play');
       player.speed = 3;
       Sfx.setAmbience(0.9);
     }
+  }
+
+  // After you've been caught: straight back on your feet and running, no camp scene.
+  function runAgain() {
+    resetRun();
+    seat = 0;
+    lightOn = true;
+    viewmodel.visible = true;
+    vmRaise = 0.6;
+    placeStickIdle();
+    setState('play');
+    player.speed = 3;
+    Sfx.setAmbience(0.9);
+  }
+
+  // Back to sitting by the fire.
+  function toMenu() {
+    resetRun();
+    setState('menu');
+    Sfx.stopBreathing();
+    Sfx.setAmbience(0.9);
   }
 
   function caught() {
@@ -382,7 +439,6 @@
     if (dist > best) { best = dist; saveBest(best); }
     ui.result.textContent = 'You ran ' + dist + ' meters.';
     ui.best.textContent = 'Furthest: ' + best + ' m';
-    showBestMenu();
     setState('over');
     chaser.root.visible = false;
     ui.tunnel.style.transform = 'scale(2.4)';
@@ -699,15 +755,22 @@
     let pitch = -0.13 + Math.sin(t * 0.47) * 0.012;
     seat = 1;
     if (state === 'intro') {
-      const look = smooth(0.35, 0.8, introT), turn = smooth(1.75, 2.45, introT);
-      yaw += (introLookYaw - yaw) * look;
-      pitch += (introLookPitch - pitch) * look;
-      yaw += (introRunYaw - yaw) * turn;
-      pitch += (-0.06 - pitch) * turn;
-      seat = 1 - smooth(1.7, 2.3, introT);
+      // each turn starts from wherever the last one ended
+      const steps = [
+        [INTRO.look1, introLook1, -0.03],
+        [INTRO.look2, introLook2, 0],
+        [INTRO.find, introLookYaw, introLookPitch],
+        [INTRO.turn, introRunYaw, -0.06]
+      ];
+      steps.forEach(st => {
+        const k = smooth(st[0][0], st[0][1], introT);
+        yaw += (st[1] - yaw) * k;
+        pitch += (st[2] - pitch) * k;
+      });
+      seat = 1 - smooth(INTRO.stand[0], INTRO.stand[1], introT);
     }
     // frozen, trembling, heart pounding
-    const tremble = state === 'intro' && introT > 0.8 ? 0.006 + beatPulse * 0.01 : 0;
+    const tremble = state === 'intro' && introT > INTRO.find[1] ? 0.006 + beatPulse * 0.01 : 0;
     body.position.set(
       player.x + (Math.random() - 0.5) * tremble,
       SIT_EYE + (EYE_HEIGHT - SIT_EYE) * (1 - seat) + Math.sin(t * 1.7) * 0.006 + (Math.random() - 0.5) * tremble,

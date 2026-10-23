@@ -17,7 +17,7 @@
   const CAMP = {
     fireD: -2.2,
     // where it can stand watching you, between the trees past the fire
-    eyes: [{ x: -1.3, d: -13 }, { x: 5, d: -12 }]
+    eyes: [{ x: -9.5, d: -5 }, { x: 8, d: -9 }]
   };
 
   // The abandoned places. w/d: size of the footprint (local x/z), facing: turn it to face the path.
@@ -233,8 +233,13 @@
         for (let x = -11.5; x <= 11.5; x += 2.3) {
           const tx = x + (Math.random() - 0.5) * 1.4;
           if (Math.hypot(tx, d - CAMP.fireD) < 7) continue;
-          if (CAMP.eyes.some(e => distToSegment(tx, d, 0, 0, e.x, e.d) < 1.6)) continue;
-          if (Math.random() < 0.55) add(Math.random() < 0.8 ? 'pine' : 'dead', tx, 0.8 + Math.random() * 0.5);
+          // (pine branches hang down to eye height, so they need a wider gap than a bare trunk)
+          const gapToEyes = Math.min.apply(null, CAMP.eyes.map(e => distToSegment(tx, d, 0, 0, e.x, e.d)));
+          if (gapToEyes < 1.6) continue;
+          if (Math.random() < 0.55) {
+            const kind = Math.random() < 0.8 && gapToEyes > 3.4 ? 'pine' : 'dead';
+            add(kind, tx, 0.8 + Math.random() * 0.5);
+          }
           else if (Math.random() < 0.4) add('bush', tx, 0.6 + Math.random() * 0.6);
         }
       }
