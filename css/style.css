@@ -25,6 +25,11 @@ html, body {
   image-rendering: crisp-edges;
 }
 
+#wet {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
 #vignette, #tunnel, #danger, #static {
   position: fixed;
   inset: 0;

@@ -25,6 +25,9 @@
   const HIT_LUNGE = 0.07;       // it comes out of nowhere
   const HIT_SIDE = 0.08;        // it slams into a door
   const HIT_WALL = 0.06;        // you scrape into the trees
+  const HIT_DEER = 0.15;        // you hit a deer
+  const DEER_CROSS = 1.3;       // seconds for a deer to leap across the road
+  const FRONT = 2.6;            // from the middle of the truck to its front bumper
   const CRASH_LIMIT = 3, CRASH_WINDOW = 8; // this many crashes in this many seconds and it gets you
 
   function create(ctx) {
@@ -34,7 +37,7 @@
     const input = { x: 0, brake: false };
     const truck = {
       x: 0, d: 0, speed: 0, vx: 0, steer: 0, yaw: 0, drift: 0, driftSide: 1,
-      held: 0, heat: 0, brake: 0, stall: 0, health: 1, wallCooldown: 0
+      held: 0, heat: 0, brake: 0, stall: 0, health: 1, wallCooldown: 0, wallFree: 9
     };
     let shake = 0, rumble = 0, pitch = 0, roll = 0, jolt = 0, blur = 0, shownBlur = -1;
     let engineAcc = 0, runTime = 0;
@@ -47,6 +50,11 @@
     let closeNow = 0, beatPulse = 0, heartTimer = 0, flicker = 0;
     // the end: the truck gives out
     let caughtT = -1;
+    // deer, puddles, the headlights failing
+    const deer = hw.deer;
+    let deerTimer = 0, deerS = null, learnedBrake = ctx.flag('braked');
+    let wetT = -1, shownWet = -1;
+    let blackoutTimer = 0, blackoutT = -1, blackoutOff = 1.5;
 
     function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
     function smooth(a, b, t) {
@@ -74,7 +82,7 @@
     function reset() {
       truck.x = 0; truck.d = 0; truck.speed = 0; truck.vx = 0; truck.steer = 0; truck.yaw = 0;
       truck.drift = 0; truck.held = 0; truck.heat = 0; truck.brake = 0; truck.stall = 0;
-      truck.health = 1; truck.wallCooldown = 0;
+      truck.health = 1; truck.wallCooldown = 0; truck.wallFree = 9;
       shake = 0; rumble = 0; pitch = 0; roll = 0; jolt = 0; blur = 0;
       runTime = 0;
       gap = START_GAP; chaserX = 0; lunge = null; lungeTimer = 30 + Math.random() * 15;
@@ -83,6 +91,11 @@
       closeNow = 0; beatPulse = 0; heartTimer = 0; flicker = 0;
       caughtT = -1;
       chaser.root.visible = false;
+      deerS = null; deerTimer = 14 + Math.random() * 6;
+      deer.root.visible = false;
+      wetT = -1;
+      blackoutT = -1; blackoutTimer = 35 + Math.random() * 20;
+      ui.hint.classList.add('hidden');
       cab.repair();
       cab.setSmoke(0);
       hw.reset();
@@ -157,12 +170,18 @@
         truck.speed += clamp(want - truck.speed, -7 * dt, ACCEL * dt);
       }
 
+      const front0 = truck.d + FRONT;
       steerAndMove(dt, input.x);
+      // through a puddle: a wall of water over the windscreen
+      hw.puddlesBetween(front0, truck.d + FRONT).forEach(p => {
+        if (Math.abs(p.x - truck.x) < 1.0 + p.w * 0.4) splash();
+      });
 
       // the edge of the road: rough ground, then the trees
       off = truck.x - hw.centerAt(truck.d);
       const wallR = truck.d < 31 ? 3.25 : WALL; // the guardrail where you got out of the forest
       truck.wallCooldown -= dt;
+      truck.wallFree += dt;
       if (off > wallR || off < -WALL) {
         const side = Math.sign(off);
         truck.x = hw.centerAt(truck.d) + side * (side > 0 ? wallR : WALL);
@@ -176,13 +195,18 @@
           Sfx.scrape();
           if (Math.random() < 0.6) cab.crack(0.3);
           if (Math.random() < 0.5) cab.dent(0.3);
-          crash(HIT_WALL);
+          // scraping along the trees counts as one crash, not one every bump
+          if (truck.wallFree > 2) crash(HIT_WALL);
+          else damage(HIT_WALL * 0.5);
         }
+        truck.wallFree = 0;
       }
       rumble = Math.abs(off) > GRASS ? Math.min(1, truck.speed / 12) : 0;
 
       hw.update(truck.d);
       chase(dt, cruise);
+      updateDeer(dt);
+      updateBlackout(dt);
       panic(dt);
 
       // sounds: the engine, the road, the tyres
@@ -338,6 +362,145 @@
       if (glanceT >= DUR) { glanceT = -1; glanceAmount = 0; }
     }
 
+    // ---- deer: frozen in your headlights at the roadside... then across the road --------
+    function spawnDeer() {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const d = truck.d + Math.max(46, truck.speed * 2.8);
+      const cx = hw.centerAt(d);
+      deerS = { phase: 'wait', d: d, x0: cx + side * 6.6, x1: cx - side * 6.6, x: cx + side * 6.6, y: 0, t: 0 };
+      deer.root.visible = true;
+      deer.setMode('stand');
+      deer.root.rotation.set(0, -side * Math.PI / 2, 0); // facing across the road
+      deer.look(side * 1.2);                               // ...but looking at you
+    }
+
+    function updateDeer(dt) {
+      if (!deerS) {
+        deerTimer -= dt;
+        if (deerTimer <= 0 && !lunge && blackoutT < 0 && truck.d < hw.LENGTH - 150) spawnDeer();
+        return;
+      }
+      const S = deerS;
+      const ahead = S.d - (truck.d + FRONT);
+      if (S.phase === 'wait') {
+        // it bolts just in time to be right in front of you, if you keep going like this
+        const f = Math.abs(truck.x - S.x0) / Math.abs(S.x1 - S.x0);
+        // (when you'll get there, counting the truck still picking up speed)
+        const v = Math.max(truck.speed, 0.5);
+        const a = truck.brake > 0 || truck.stall > 0 ? 0 : Math.min(ACCEL, Math.max(0, cruiseSpeed() - v));
+        const T = a > 0.01 ? (Math.sqrt(v * v + 2 * a * ahead) - v) / a : ahead / v;
+        if (T <= f * DEER_CROSS || ahead < 5) {
+          S.phase = 'leap';
+          deer.setMode('leap');
+          deer.look(0);
+          Sfx.hooves();
+        }
+      } else if (S.phase === 'leap') {
+        S.t += dt;
+        S.x = S.x0 + (S.x1 - S.x0) * (S.t / DEER_CROSS);
+        if (S.t > DEER_CROSS + 0.8) S.phase = 'gone';
+      } else if (S.phase === 'hit') {
+        // thrown through the air, then tumbling down the road
+        S.t += dt;
+        S.vy -= 14 * dt;
+        S.x += S.vx * dt;
+        S.d += S.vd * dt;
+        S.y += S.vy * dt;
+        if (S.y < 0) { S.y = 0; S.vy *= -0.3; S.vd *= 0.5; S.vx *= 0.5; }
+        deer.root.rotation.x += S.spin * dt;
+        deer.root.rotation.z += S.spin * 0.6 * dt;
+        if (S.t > 2.5) S.phase = 'gone';
+      }
+      // right in front of you
+      // right in front of you (or into your side)
+      if ((S.phase === 'wait' || S.phase === 'leap') && ahead < 0.3 && ahead > -FRONT * 2 && Math.abs(S.x - truck.x) < 1.25) hitDeer();
+      deer.root.position.set(S.x, S.y, -S.d);
+      deer.update(dt);
+      // the hint, until you've braked for one
+      const showHint = !learnedBrake && (S.phase === 'wait' || S.phase === 'leap') && ahead < 55 && ahead > 0;
+      ui.hint.classList.toggle('hidden', !showHint);
+      if (showHint && truck.brake > 0) {
+        learnedBrake = true;
+        ctx.flag('braked', true);
+      }
+      if (S.phase === 'gone' || ahead < -12) {
+        deerS = null;
+        deer.root.visible = false;
+        ui.hint.classList.add('hidden');
+        const diff = hw.difficulty(truck.d);
+        deerTimer = 20 + Math.random() * 18 - diff * 9;
+      }
+    }
+
+    function hitDeer() {
+      const S = deerS;
+      crash(HIT_DEER);
+      cab.crack(0.9);
+      cab.dent(0.8);
+      Sfx.deerHit();
+      shake = 1;
+      blur = 0.4;
+      truck.speed *= 0.62;
+      S.phase = 'hit';
+      S.t = 0;
+      S.vx = (S.x > truck.x ? 1 : -1) * (3 + Math.random() * 3);
+      S.vd = truck.speed * 1.1 + 4;
+      S.vy = 4.5;
+      S.spin = 6 + Math.random() * 5;
+      deer.setMode('hit');
+    }
+
+    // ---- water: a puddle splashes the glass; two seconds later the wipers clear it ------
+    function splash() {
+      if (wetT >= 0 || cab.wiping()) return;
+      cab.splash(1);
+      Sfx.splash();
+      wetT = 0;
+      shake = Math.max(shake, 0.25);
+      truck.speed *= 0.94;
+    }
+    function updateWet(dt) {
+      if (wetT >= 0) {
+        wetT += dt;
+        if (wetT >= 2) { wetT = -1; cab.wipe(2); }
+      }
+      // blur whatever is behind the wet glass
+      const px = Math.round(cab.wetness() * 6) / 2;
+      if (px !== shownWet) {
+        shownWet = px;
+        ui.wet.classList.toggle('hidden', px <= 0);
+        ui.wet.style.backdropFilter = ui.wet.style.webkitBackdropFilter = 'blur(' + px + 'px)';
+      }
+      if (px > 0) {
+        const poly = cab.glassOnScreen(camera, window.innerWidth, window.innerHeight);
+        ui.wet.style.clipPath = ui.wet.style.webkitClipPath = poly || 'inset(100%)';
+      }
+    }
+
+    // ---- the headlights die now and then: drive blind for a second or two ----------------
+    function updateBlackout(dt) {
+      if (blackoutT < 0) {
+        blackoutTimer -= dt;
+        if (blackoutTimer <= 0 && !deerS && !lunge && runTime > 20) {
+          blackoutT = 0;
+          blackoutOff = 1 + Math.random();
+          Sfx.click();
+        }
+      } else {
+        blackoutT += dt;
+        if (blackoutT > 0.35 + blackoutOff + 0.4) {
+          blackoutT = -1;
+          blackoutTimer = 25 + Math.random() * 25 - closeNow * 10;
+        }
+      }
+    }
+    function lightLevel() {
+      if (blackoutT < 0) return 1;
+      if (blackoutT < 0.35) return Math.random() < 0.5 ? 0.05 : 0.6;
+      if (blackoutT < 0.35 + blackoutOff) return 0;
+      return Math.random() < 0.5 ? 0.1 : 0.8;
+    }
+
     // ---- fear: heartbeat, breathing, red edges, tunnel vision ---------------------------
     function panic(dt) {
       const close = clamp(1 - gap / 24, 0, 1);
@@ -395,7 +558,7 @@
       ui.wheelArt.style.transform = 'rotate(' + (truck.steer * 110).toFixed(1) + 'deg)';
 
       // the headlights and the dials
-      let lights = truck.stall > 0 ? (Math.random() < 0.35 ? 0.3 : 0.85) : 1;
+      let lights = (truck.stall > 0 ? (Math.random() < 0.35 ? 0.3 : 0.85) : 1) * lightLevel();
       if (flicker > 0) lights *= Math.random() < 0.5 ? 0.05 : 0.4;
       if (caughtT >= 0) lights *= 1 - smooth(0.5, 1.3, caughtT) * (Math.random() < 0.3 ? 0.5 : 1);
       finish.beams.intensity = 2.6 * lights;
@@ -480,6 +643,7 @@
       if (state === 'play') drive(dt);
       else if (state === 'caught') updateCaught(dt);
       updateView(dt);
+      updateWet(dt);
       effects(dt);
       cab.renderMirror(ctx.renderer, ctx.scene);
     }
@@ -490,6 +654,10 @@
       Sfx.setScreech(0);
       ctx.canvas.style.filter = '';
       shownBlur = -1;
+      ui.wet.classList.add('hidden');
+      shownWet = -1;
+      deer.root.visible = false;
+      ui.hint.classList.add('hidden');
       cab.tail.intensity = 0;
       chaser.root.visible = false;
     }
@@ -518,6 +686,10 @@
         lunge: side => { lungeTimer = 0; runTime = Math.max(runTime, 26); startLunge(side || 0); },
         damage: v => damage(v),
         crash: v => crash(v || 0),
+        deer: () => { deerTimer = 0; blackoutT = -1; lunge = null; },
+        splash: () => splash(),
+        blackout: () => { blackoutTimer = 0; runTime = Math.max(runTime, 21); },
+        deerState: () => deerS && { phase: deerS.phase, ahead: deerS.d - truck.d - FRONT, x: deerS.x - truck.x },
         now: () => ({ lunge: lunge && { phase: lunge.phase, t: lunge.t, side: lunge.side }, caughtT: caughtT, gap: gap, health: truck.health })
       }
     };

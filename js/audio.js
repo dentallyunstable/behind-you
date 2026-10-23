@@ -421,6 +421,29 @@
       tone(510, 330, 0.3, 0.05, 'square', 0.06);
       noise(0.25, 'highpass', 5000, 1, 0.12, pan, 0.1);
     },
+    // hitting a deer: a heavy thud, the glass cracking
+    deerHit: function () {
+      tone(70, 30, 0.4, 0.9, 'triangle');
+      noise(0.3, 'lowpass', 500, 1, 0.9);
+      noise(0.04, 'highpass', 4000, 1, 0.4, 0, 0.05);
+      noise(0.03, 'highpass', 5000, 1, 0.3, 0, 0.12);
+      noise(0.5, 'lowpass', 250, 1, 0.3, 0, 0.35); // landing on the road behind
+    },
+    // hooves on the asphalt as a deer bolts
+    hooves: function () {
+      for (let i = 0; i < 6; i++) noise(0.03, 'bandpass', 900 + Math.random() * 400, 3, 0.12, 0, i * 0.11 + (i % 2) * 0.04);
+    },
+    // driving through a puddle: a whoosh of water over the truck
+    splash: function () {
+      noise(0.6, 'bandpass', 1400, 0.7, 0.5);
+      noise(0.9, 'highpass', 3000, 0.5, 0.2, 0, 0.05);
+      noise(0.3, 'lowpass', 300, 1, 0.4);
+    },
+    // a wiper blade across the glass: a rubbery squeak and a thunk
+    wiper: function () {
+      tone(900, 700, 0.18, 0.025, 'sawtooth');
+      noise(0.05, 'lowpass', 300, 1, 0.12, 0, 0.2);
+    },
     // branches scraping down the side of the truck
     scrape: function () {
       for (let i = 0; i < 5; i++) noise(0.07, 'bandpass', 1800 + Math.random() * 1600, 2, 0.12, 0, i * 0.06 + Math.random() * 0.03);

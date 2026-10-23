@@ -193,6 +193,54 @@
   }
 
 
+  // A deer's brown hide, darker along the back.
+  function buildDeer() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(S, 6);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const v = (0.6 + n(x, y) * 0.3 + Math.random() * 0.12) * (y < 6 ? 0.7 : 1);
+      return [92 * v, 68 * v, 48 * v];
+    });
+    return toTexture(c, false);
+  }
+
+  // A yellow "deer crossing" sign: a diamond with a leaping deer, with a little rust.
+  function buildDeerSign() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const d = Math.abs(x - 15.5) + Math.abs(y - 15.5);
+      if (d > 15.5) return [0, 0, 0, 0];
+      if (d > 13.5) return [20, 18, 12];
+      const v = 0.8 + Math.random() * 0.2;
+      return Math.random() < 0.03 ? [110, 60, 30] : [200 * v, 160 * v, 30 * v];
+    });
+    // the leaping deer
+    ctx.fillStyle = '#15120c';
+    [[10, 15, 11, 3], [19, 12, 2, 4], [20, 10, 2, 2], [21, 9, 2, 2], [9, 13, 2, 2], [11, 18, 2, 5], [8, 21, 2, 2],
+      [18, 18, 2, 4], [20, 21, 2, 2], [22, 8, 1, 2], [19, 8, 1, 2]].forEach(r => ctx.fillRect(r[0], r[1], r[2], r[3]));
+    return toTexture(c, false);
+  }
+
+  // A puddle on the road: black water with a few streaks of reflected light.
+  function buildPuddle() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const n = makeNoise(S, 4);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const dx = (x - 15.5) / 15.5, dy = (y - 15.5) / 15.5;
+      const edge = Math.hypot(dx, dy) + (n(x, y) - 0.5) * 0.45;
+      if (edge > 0.95) return [0, 0, 0, 0];
+      const glint = Math.random() < 0.04 || (y % 7 === 3 && Math.random() < 0.35);
+      return glint ? [120, 130, 140, 200] : [8, 10, 14, 230];
+    });
+    return toTexture(c, false);
+  }
+
   function buildGlow() {
     const S = 32;
     const c = makeCanvas(S, S);
@@ -315,6 +363,9 @@
         ground: buildGround(),
         bush: buildBush(),
         hand: buildHand(),
+        deer: buildDeer(),
+        deerSign: buildDeerSign(),
+        puddle: buildPuddle(),
         monsterSkin: buildMonsterSkin(),
         monsterFace: buildMonsterFace()
       };

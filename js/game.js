@@ -31,7 +31,7 @@
     escaped: $('escaped'), nextBtn: $('nextBtn'), comingSoon: $('comingSoon'),
     endlessBtn: $('endlessBtn'), escMenuBtn: $('escMenuBtn'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint'),
-    healthBar: $('healthBar'), wheelArt: $('wheelArt')
+    healthBar: $('healthBar'), wheelArt: $('wheelArt'), wet: $('wet')
   };
   for (let i = 0; i < 10; i++) ui.healthBar.appendChild(document.createElement('i'));
 
@@ -1211,7 +1211,7 @@
     renderer: renderer, scene: scene, canvas: canvas,
     keys: keys, stick: stick, sprintBtn: sprintBtn,
     setState: setState, state: () => state, stateTime: () => stateTime, baseFov: () => baseFov2,
-    drawStatic: drawStatic,
+    drawStatic: drawStatic, flag: flag,
     releaseInput: () => { stick.id = null; stick.x = stick.y = 0; releaseSprint(); },
     onCaught: dist => finishCaught(dist)
   });
@@ -1231,6 +1231,8 @@
     camera.far = FOG[n][2];
     camera.fov = n === 2 ? baseFov2 : baseFov;
     camera.updateProjectionMatrix();
+    if (n === 2) ui.hint.textContent = touchScreen ? 'HOLD BRAKE' : 'HOLD SPACE TO BRAKE';
+    else ui.hint.textContent = touchScreen ? 'PUSH UP TO JUMP' : 'SPACE TO JUMP';
     if (n === 2) {
       hw.root.add(finish.car);
       finish.car.add(body);

@@ -166,6 +166,125 @@
       crackTex.needsUpdate = true;
     }
 
+    // ---- water on the windscreen, and the wipers -------------------------------------
+    // The glass, in its own flat frame: x across (+x your side), y up the glass, z out of it.
+    const GLASS_W = 1.84, GLASS_H = 0.74;
+    const glass = new THREE.Group();
+    glass.position.set(0, 1.48, 1.25);
+    glass.rotation.x = -0.25;
+    root.add(glass);
+    const wc = document.createElement('canvas');
+    wc.width = 128;
+    wc.height = 52;
+    const wx = wc.getContext('2d');
+    const waterTex = new THREE.CanvasTexture(wc);
+    waterTex.minFilter = waterTex.magFilter = THREE.LinearFilter;
+    waterTex.generateMipmaps = false;
+    const waterMat = new THREE.MeshBasicMaterial({ map: waterTex, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(GLASS_W, GLASS_H), waterMat);
+    water.position.z = -0.016;
+    glass.add(water);
+    // canvas pixel of a point on the glass (the canvas is seen from inside, so +x is on the canvas' right)
+    function toCanvas(x, y) {
+      return [(x / GLASS_W + 0.5) * wc.width, (0.5 - y / GLASS_H) * wc.height];
+    }
+    // drops and smears; amount 0..1
+    function splash(amount) {
+      // a grey film of dirty water...
+      if (amount > 0.5) {
+        wx.fillStyle = 'rgba(70,76,82,' + (0.55 * amount).toFixed(2) + ')';
+        wx.fillRect(0, 0, wc.width, wc.height);
+      }
+      // ...drops, and water running down the glass
+      const n = Math.floor(amount * 420);
+      for (let i = 0; i < n; i++) {
+        const x = Math.random() * wc.width, y = Math.random() * wc.height;
+        const v = 90 + Math.random() * 50 | 0;
+        wx.fillStyle = 'rgba(' + v + ',' + (v + 6) + ',' + (v + 12) + ',' + (0.3 + Math.random() * 0.3).toFixed(2) + ')';
+        wx.fillRect(x | 0, y | 0, Math.random() < 0.3 ? 2 : 1, 1);
+        if (Math.random() < 0.12) wx.fillRect(x | 0, y | 0, 1, (3 + Math.random() * 8) | 0);
+      }
+      wetness = Math.min(1, wetness + amount);
+      waterTex.needsUpdate = true;
+    }
+    let wetness = 0; // how much of the glass is covered (it drives the blur)
+
+    // two wipers, parked along the bottom of the glass, pointing to the passenger side
+    const wiperMat = new THREE.MeshBasicMaterial({ color: 0x101010 });
+    const wiperGeo = new THREE.BoxGeometry(1, 0.03, 0.016);
+    wiperGeo.translate(0.5, 0, 0);
+    const PARK = Math.PI, SWEEP = 1.95;
+    const wipers = [{ x: 0.66, len: 0.66 }, { x: -0.14, len: 0.6 }].map(w => {
+      const pivot = new THREE.Group();
+      pivot.position.set(w.x, -GLASS_H / 2 + 0.035, 0.03);
+      pivot.rotation.z = PARK;
+      glass.add(pivot);
+      const arm = new THREE.Mesh(wiperGeo, wiperMat);
+      arm.scale.x = w.len;
+      pivot.add(arm);
+      return { pivot: pivot, x: w.x, len: w.len, a: PARK };
+    });
+    let wipeT = -1, wipeSweeps = 0;
+    // start the wipers: n sweeps across and back (each takes a second)
+    function wipe(n) {
+      if (wipeT >= 0) { wipeSweeps = Math.max(wipeSweeps, n); return; }
+      wipeT = 0;
+      wipeSweeps = n;
+    }
+    function updateWipers(dt) {
+      if (wipeT < 0) return;
+      const t0 = wipeT;
+      wipeT += dt;
+      const k = Math.min(wipeT, wipeSweeps);
+      const phase = k % 1;
+      const a = PARK - SWEEP * Math.sin(Math.PI * phase); // up and back down
+      if (Math.floor(t0 * 2) !== Math.floor(wipeT * 2)) Sfx.wiper();
+      wipers.forEach(w => {
+        // clear the glass wherever the blade passes
+        const from = w.a, to = a;
+        w.a = a;
+        w.pivot.rotation.z = a;
+        const c = toCanvas(w.x, -GLASS_H / 2 + 0.035);
+        const R = w.len / GLASS_W * wc.width;
+        wx.save();
+        wx.globalCompositeOperation = 'destination-out';
+        wx.fillStyle = '#000';
+        wx.beginPath();
+        wx.moveTo(c[0], c[1]);
+        // (the canvas' y runs down, so angles flip)
+        wx.arc(c[0], c[1], R, -Math.max(from, to) - 0.05, -Math.min(from, to) + 0.05);
+        wx.closePath();
+        wx.fill();
+        wx.restore();
+      });
+      waterTex.needsUpdate = true;
+      // each sweep takes about half of it away
+      wetness = Math.max(0, wetness - dt * 0.5);
+      if (wipeT >= wipeSweeps) {
+        wipeT = -1;
+        wipers.forEach(w => { w.a = PARK; w.pivot.rotation.z = PARK; });
+        wx.clearRect(0, 0, wc.width, wc.height);
+        waterTex.needsUpdate = true;
+        wetness = 0;
+      }
+    }
+
+    // Where the windscreen is on the screen (for blurring what's behind wet glass): a CSS polygon, or null.
+    // Only the part above the dashboard, so the wheel and your hands stay sharp.
+    const corner = new THREE.Vector3();
+    const CORNERS = [[-0.92, 1.84, 1.16], [0.92, 1.84, 1.16], [0.92, 1.4, 1.27], [-0.92, 1.4, 1.27]];
+    function glassOnScreen(camera, w, h) {
+      car.updateMatrixWorld();
+      camera.updateMatrixWorld();
+      const pts = [];
+      for (let i = 0; i < 4; i++) {
+        corner.set(CORNERS[i][0], CORNERS[i][1], CORNERS[i][2]).applyMatrix4(car.matrixWorld).project(camera);
+        if (corner.z > 1) return null;
+        pts.push(((corner.x + 1) / 2 * w).toFixed(0) + 'px ' + ((1 - corner.y) / 2 * h).toFixed(0) + 'px');
+      }
+      return 'polygon(' + pts.join(',') + ')';
+    }
+
     // ---- dents in the bonnet ------------------------------------------------------
     const hood = finish.hood;
     const hpos = hood.geometry.attributes.position, hcol = hood.geometry.attributes.color;
@@ -209,6 +328,11 @@
     // fixing it all (a new run)
     function repair() {
       cx.clearRect(0, 0, cc.width, cc.height);
+      wx.clearRect(0, 0, wc.width, wc.height);
+      waterTex.needsUpdate = true;
+      wetness = 0;
+      wipeT = -1;
+      wipers.forEach(w => { w.a = PARK; w.pivot.rotation.z = PARK; });
       crackTex.needsUpdate = true;
       hpos.array.set(rest);
       for (let i = 0; i < hcol.count; i++) hcol.setXYZ(i, 1, 1, 1);
@@ -230,6 +354,7 @@
         h.arm.scale.z = tmp.distanceTo(h.elbow);
       });
       if (!dt) return;
+      updateWipers(dt);
       smokeAcc += dt;
       if (smokeAcc < 1 / 12) return; // choppy, like everything else that moves
       const step = smokeAcc;
@@ -260,6 +385,11 @@
       },
       tail: tail,
       renderMirror: renderMirror,
+      splash: splash,
+      wipe: wipe,
+      wiping: () => wipeT >= 0,
+      wetness: () => wetness,
+      glassOnScreen: glassOnScreen,
       crack: crack,
       dent: dent,
       repair: repair,
