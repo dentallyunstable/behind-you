@@ -35,8 +35,8 @@ The owner designs the game but **does not code**. How to work with them:
 - Tiny procedural textures (32×32 or 64×64, drawn in code), no mipmaps, stretched and blurry.
 - Low internal resolution (400 lines), scaled up with `image-rendering: pixelated`.
 - Per-vertex (Gouraud) lighting with `MeshLambertMaterial`. Big flat surfaces need subdivided geometry, or the lighting looks wrong.
-- Dark scene. Thick fog (3 to 21 m), near-black sky, faint blue ambient light. The flashlight is the main light.
-- **Stop-motion animation.** The monster and the campfire update only 9-12 times a second, deliberately choppy. The monster has sudden head twitches.
+- Dark scene. Thick fog (3 to 21 m in the forest, 4 to 46 m on the highway so you can see ahead at speed), near-black sky, faint blue ambient light. The flashlight (Level 1) or the headlights (Level 2) are the main light.
+- **Stop-motion animation.** The monster, the deer, the campfire, the engine smoke and the rear-view mirror update only 9-15 times a second, deliberately choppy. The monster has sudden head twitches.
 
 **Menus and UI**
 - Courier-style monospace font, bone/cream text (`#d8d2c0`), black backgrounds, hard pixel text shadows.
@@ -84,7 +84,7 @@ History, so you don't repeat mistakes:
 ### Start screen (the camp)
 - You sit by a crackling campfire (choppy cone flames, embers, flickering firelight), with a tent and an empty log seat across the fire.
 - The title "BEHIND YOU" is at the top. At the bottom: "Tap to look around." on phones, "Press any key to look around." on computers.
-- A **pixel gear button** at the top left opens CONTROLS: phone controls, computer controls, how stamina works, "Headphones recommended".
+- A **pixel gear button** at the top left opens CONTROLS: phone controls, computer controls, how stamina works, "Headphones recommended". On Level 2's menu it shows the truck's controls instead (steering, brake, the brake ring, the truck's health).
 - A **LEVELS** button is at the top right.
 - Tapping fades both texts and plays the **camp intro** (about 6 s):
   1. Sit for 2 s.
@@ -168,18 +168,18 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 |---|---|
 | `index.html` | All screens and HUD elements, script order. |
 | `css/style.css` | Menus, HUD, joystick, buttons, levels, effects (vignette, tunnel, danger, static, fade). |
-| `js/textures.js` | Procedural textures. `ATLAS` (bark, leaves, dead wood, rock) and `PROPS` (planks, rust, canvas, soot) are 2×2 atlases sharing UV rects. Also ground, bush, hand, monster skin/face, glow, road, paint. |
+| `js/textures.js` | Procedural textures. `ATLAS` (bark, leaves, dead wood, rock) and `PROPS` (planks, rust, canvas, soot) are 2×2 atlases sharing UV rects. Also ground, bush, hand, monster skin/face, glow, road, paint, deer hide, deer crossing sign, puddle. |
 | `js/geo.js` | `Geo.part` (bake a primitive into an atlas rect), `merge`, `mat` (matrix), `prism`, `placeGlow` (draws far glows within the 40 m camera range). |
 | `js/props.js` | Models: log, cabin, fence, car, tent. They stand on y=0 with their front facing +z. |
-| `js/world.js` | Forest generation, difficulty, logs, places, collision. Exports `World.CAMP` (fire, eye spots) and `World.FINISH` (truck, road, lamp positions and zones). |
+| `js/world.js` | Forest generation, difficulty, logs, places, collision. Exports `World.CAMP` (fire, eye spots), `World.FINISH` (truck, road, lamp positions and zones) and `World.geometry` (the tree models, reused by the highway). `setVisible` hides the whole forest. |
 | `js/camp.js` | The campfire scene: flames, embers, light, tent, far glow, fire loudness. |
 | `js/finish.js` | Highway, guardrail, streetlight (buzzes, far glow), the pickup with interior, hinged door, dome light, dials, headlights (`setPower`). The bonnet (`hood`, dentable) and steering wheel (`wheel`, turns) are separate meshes; the rear window is an opening. The truck's rotation order is `YXZ`. |
 | `js/highway.js` | Level 2's world, in its own frame (`root`, see Coordinates): the road and ground as vertex strips that follow the bends (`centerAt(d)`), instanced trees/posts/signs/puddles, `puddlesBetween`, the **deer** model (`hw.deer`), the **rain** (`updateRain`). |
 | `js/cab.js` | Inside the truck (children of the truck): hands and forearms on the wheel, gauges (`setGauges`), the **rear-view mirror** (a render target from a small camera looking back through the rear window, every other frame), windscreen cracks (`crack`), bonnet dents (`dent`), smoke (`setSmoke`), water and wipers (`splash`, `wipe`, `glassOnScreen`), the fogged rear window with the writing (`setFog`), tail and hazard lights. |
 | `js/drive.js` | Level 2's game: truck physics (steer, brake, drift, stall), the chase (gap, rams, lunges, side slams, glances), health and crashes, deer, puddles, blackouts, the menu scene, the start scene, the caught scene, the end. Created by game.js with a `ctx` object of shared things. |
-| `js/monster.js` | The creature. Modes: `run`, `still`, `reach`, `lunge`. Stop-motion posing; `place(..., eyeBoost)`. |
-| `js/audio.js` | `Sfx.*`: all sounds (steps, heartbeat, breathing, crickets, fire, snap, click, jump/land, hit, caught, door, slam, drop, key, crank, engine, thump, passing truck). |
-| `js/art.js` | Pixel art for menus: `Art.lockedCard`, `Art.lockedMini` (chains and padlocks). |
+| `js/monster.js` | The creature. Modes: `run`, `still`, `reach`, `lunge`, `crawl` (on all fours, Level 2). Stop-motion posing; `place(..., eyeBoost)`; `setModeOnce`. |
+| `js/audio.js` | `Sfx.*`: all sounds. Level 1: steps, heartbeat, breathing, crickets, fire, snap, click, jump/land, hit, caught, door, slam, drop, key, crank, engine, thump, passing truck. Level 2: `setEngine` (revs), `sputter`/`engineCatch` (choking), `setRoad`, `setScreech`, `crunch` (its hits), `scrape`, `deerHit`, `hooves`, `splash`, `wiper`, `setRain`, `setRadio`, `tick` (hazards), `rev`. |
+| `js/art.js` | Pixel art for menus: `Art.lockedCard`, `Art.lockedMini` (chains and padlocks). The steering wheel and brake icons are pixel SVGs in `index.html`. |
 | `js/game.js` | Everything else: renderer, input, states, player, chaser, effects, camp intro, truck scenes, menus, levels, saving. `useLevel(n)` switches between the two levels' worlds. |
 | `lib/three.min.js` | three.js **r128** (an older version; the code uses its API, e.g. `outputEncoding`). Do not upgrade casually. |
 
@@ -239,7 +239,7 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 
 ## 7. Gotchas learned the hard way
 
-- **Camera far plane is 40 m.** Anything farther isn't drawn. Far glows must use `Geo.placeGlow`.
+- **Camera far plane is 40 m** in the forest (60 m on the highway). Anything farther isn't drawn. Far glows must use `Geo.placeGlow`.
 - **Function names clash in game.js** (one big closure). A `shake()` helper once broke the whole game because `shake` was already a variable. Check names before adding.
 - **Eyes on the monster face** z-fought at distance. They sit slightly in front, with `polygonOffset`.
 - Big flat meshes need subdivisions, or vertex lighting makes them black or wrong.
@@ -261,7 +261,6 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 - **The last 250 m difficulty** (Level 1) was played by the owner: it feels fine, leave it.
 - **Level 2 has not been played by the owner yet.** Ask how it feels: speed, how hard the brake/stall is, how often deer and lunges come, how much damage things do, how big the mirror is, whether the wet-glass blur is too much.
 - **The end of The Highway is a placeholder** (fade to black). The owner will decide where the highway leads; that also decides Level 3. Ideas offered earlier: a collapsed bridge with a boat below (a new vehicle each level), running out of fuel at an abandoned gas station, a crash blocking a tunnel.
-- **Test branch "1800"** (on GitHub): a copy where runs in The Forest start at 1800 m (camp scene first, RUN AGAIN too), for trying the last stretch and the escape. Made from this branch on request; it doesn't get later changes unless they're merged into it.
 - **More obstacles and difficulties for Level 2** were requested "later, not now" by the owner.
 - **No endless mode for Level 2** yet.
 - **Level 3 doesn't exist.** Its card says "Reach 9000 m on The Highway to unlock" / "Coming soon". A new level needs: its own world and finish, a menu scene (continuing from where the last level ended), a card picture, unlock wiring, and the next card's unlock text.
@@ -269,21 +268,26 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
   - a tap-to-toggle sprint for one-handed play
   - hiding the monster's faint body at the camp so only the eyes show
 - **Putting it online:** GitHub Pages on the branch gives a phone link (see README).
+- **Nothing else is left over:** the only branch is the working branch, and no play pages (Artifacts) are published right now. Earlier test copies (a branch "1800" that started runs at 1800 m, and its play page) were removed on request; the owner deletes the branch on GitHub themselves.
 
 ---
 
 ## 9. How to work on it (for the developer/Claude)
 
 - **Branch:** `claude/endless-runner-single-hand-hnwafr`. Commit with clear messages describing what the player gets, then push.
+- **Test copies:** the owner sometimes asks for a test branch (for example, starting a run at 1800 m). Make it from the working branch, push it, and switch back. The session **cannot delete branches on GitHub** (the push is cut off), so when they want it gone, delete it locally and tell them to delete it on GitHub.
 - **No build step.** Edit the files and reload the browser.
 - **Match the code style:**
   - plain ES5/ES6 inside IIFEs that export one global (`window.World`, `window.Sfx`, …)
   - 2-space indent, single quotes
   - short comments written in plain English from the player's point of view
-- **Test every change in headless Chromium** (Playwright is installed globally; Chromium is at `/opt/pw-browsers`):
+- **Build big features in steps** (the owner liked this for Level 2): a short plan first, then build step by step, committing, pushing and sending screenshots after each step.
+- **Test every change in headless Chromium** (Playwright is installed globally at `/opt/node22/lib/node_modules/playwright`; Chromium is at `/opt/pw-browsers`; open `file:///home/user/behind-you/index.html`):
   - Launch with `--use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist` at a phone viewport (about 400×820, `hasTouch`).
   - Check for `pageerror` events, drive the game with `window.__game`, and take screenshots.
   - The screenshots are dark, so brighten them for viewing and combine them into one grid image to send to the owner.
   - Use the browser's multi-touch (CDP `Input.dispatchTouchEvent`) to test the joystick and FASTER button together.
-- **Showing a playable build in chat:** publish the page as an Artifact. The page content is the `<body>` of index.html plus a `<title>`, with all `css/`, `lib/` and `js/` files passed as supporting files.
+  - Clear or set `localStorage` first to test as a new player (`behindyou.escaped` = `1` unlocks Level 2, `behindyou.lastLevel` = `2` opens on its menu).
+  - Also check Level 1 after changing shared things (the truck in `finish.js`, the monster, `game.js`): the escape scene and the endless start use the same truck.
+- **Showing a playable build in chat:** publish the page as an Artifact. The page file is a `<title>`, a `<link rel="stylesheet" href="css/style.css">`, and the `<body>` of index.html; pass every `css/`, `lib/` and `js/` file as supporting files at the same paths. Each play page keeps its own saved progress (separate from the owner's phone). The owner asks to delete old play pages when done.
 - Keep `README.md` updated (how to play and the file list) when controls or files change.
