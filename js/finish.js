@@ -69,32 +69,44 @@
     // ---- the pickup: front faces +z, the driver's side is +x (local) ------------
     const car = new THREE.Group();
     car.position.set(F.carX, 0, -F.carD);
+    car.rotation.order = 'YXZ';    // turn first, then tip and roll on its springs (when you drive it)
     car.rotation.y = -Math.PI / 2; // parked facing -x, driver's door towards the forest
     root.add(car);
 
     car.add(new THREE.Mesh(merge([
       box(2.0, 0.5, 5.2, FULL, mat(0, 0.6, 0), 2, 1, 5),
-      box(1.96, 0.25, 1.3, FULL, mat(0, 0.97, 1.95), 2, 1, 2),
       box(0.07, 0.25, 1.62, FULL, mat(-0.97, 0.97, 0.43)),
       box(1.92, 0.08, 1.45, FULL, mat(0, 1.86, 0.35), 2, 1, 2),
       box(0.07, 0.78, 0.07, FULL, mat(0.94, 1.47, 1.22)),
       box(0.07, 0.78, 0.07, FULL, mat(-0.94, 1.47, 1.22)),
       box(0.07, 0.78, 0.1, FULL, mat(-0.94, 1.47, -0.36)),
-      box(1.92, 1.0, 0.07, FULL, mat(0, 1.35, -0.42)),
+      // the back of the cab, around the rear window
+      box(1.92, 0.45, 0.07, FULL, mat(0, 1.075, -0.42)),
+      box(1.92, 0.15, 0.07, FULL, mat(0, 1.775, -0.42)),
+      box(0.31, 0.4, 0.07, FULL, mat(0.805, 1.5, -0.42)),
+      box(0.31, 0.4, 0.07, FULL, mat(-0.805, 1.5, -0.42)),
       box(0.08, 0.42, 2.1, FULL, mat(0.96, 1.06, -1.5)),
       box(0.08, 0.42, 2.1, FULL, mat(-0.96, 1.06, -1.5)),
       box(1.92, 0.42, 0.08, FULL, mat(0, 1.06, -2.56))
     ]), paintMat));
 
+    // the bonnet on its own, finely divided, so it can take dents
+    const hoodMat = new THREE.MeshLambertMaterial({ map: tex.paint, vertexColors: true });
+    const hoodGeo = new THREE.BoxGeometry(1.96, 0.25, 1.3, 10, 1, 7).toNonIndexed();
+    hoodGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(hoodGeo.attributes.position.count * 3).fill(1), 3));
+    const hood = new THREE.Mesh(hoodGeo, hoodMat);
+    hood.position.set(0, 0.97, 1.95);
+    hood.userData.rest = hoodGeo.attributes.position.array.slice();
+    car.add(hood);
+
     const dark = [
       box(1.4, 0.3, 0.05, P.soot, mat(0, 0.75, 2.61)),
       box(2.04, 0.14, 0.18, P.soot, mat(0, 0.42, 2.62)),
       box(2.04, 0.14, 0.18, P.soot, mat(0, 0.42, -2.62)),
-      box(1.3, 0.4, 0.09, P.soot, mat(0, 1.5, -0.42)),          // rear window, black
       box(1.84, 0.06, 2.1, P.soot, mat(0, 0.86, -1.5)),         // bed floor
       box(1.86, 0.05, 1.6, P.soot, mat(0, 0.86, 0.45)),         // cab floor
       box(1.86, 0.28, 0.35, P.soot, mat(0, 1.12, 1.08)),        // dashboard
-      part(new THREE.TorusGeometry(0.17, 0.022, 4, 10), P.soot, mat(0.42, 1.3, 0.86, -0.45, 0, 0)),
+      box(1.86, 0.02, 1.4, P.canvas, mat(0, 1.81, 0.38)),       // the roof lining
       part(new THREE.CylinderGeometry(0.03, 0.03, 0.3, 5), P.soot, mat(0.42, 1.24, 0.99, 1.1, 0, 0)),
       // seat
       box(1.8, 0.16, 0.55, P.canvas, mat(0, 0.82, 0.05)),
@@ -106,6 +118,21 @@
       dark.push(part(g, P.soot, mat(w[0], 0.42, w[1])));
     });
     car.add(new THREE.Mesh(merge(dark), propsMat));
+
+    // the steering wheel: it turns (spin) when you steer
+    const wheel = new THREE.Group();
+    wheel.position.set(0.42, 1.3, 0.86);
+    wheel.rotation.x = -0.45;
+    car.add(wheel);
+    const wheelSpin = new THREE.Group();
+    wheel.add(wheelSpin);
+    const spokes = [part(new THREE.TorusGeometry(0.17, 0.022, 4, 10), P.soot)];
+    [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6].forEach(a => {
+      spokes.push(box(0.025, 0.16, 0.015, P.soot, mat(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0, 0, 0, a - Math.PI / 2)));
+    });
+    spokes.push(part(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 6), P.soot, mat(0, 0, 0, Math.PI / 2, 0, 0)));
+    wheelSpin.add(new THREE.Mesh(merge(spokes), propsMat));
+
     car.add(new THREE.Mesh(merge([
       box(0.3, 0.18, 0.05, FULL, mat(0.7, 0.85, 2.61)),
       box(0.3, 0.18, 0.05, FULL, mat(-0.7, 0.85, 2.61))
@@ -178,6 +205,16 @@
       root: root,
       car: car,
       door: door,
+      road: road,
+      hood: hood,
+      wheel: wheelSpin,
+      beams: beams,
+      dome: dome,
+      headMat: headMat,
+      tailMat: tailMat,
+      dashMat: dashMat,
+      paintMat: paintMat,
+      propsMat: propsMat,
       carPoint: carPoint,
       update: update,
       DOOR_OPEN: -1.15,

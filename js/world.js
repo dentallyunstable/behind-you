@@ -471,8 +471,15 @@
       return out;
     }
 
+    // hide the whole forest (on the highway it's somewhere far behind you)
+    function setVisible(v) {
+      Object.keys(kinds).forEach(name => { kinds[name].mesh.visible = v; });
+      ground.visible = v;
+    }
+
     return {
       places: places,
+      setVisible: setVisible,
       reset: reset,
       update: update,
       collide: collide,
@@ -482,5 +489,10 @@
     };
   }
 
-  window.World = { create: create, CAMP: CAMP, FINISH: FINISH };
+  window.World = {
+    create: create, CAMP: CAMP, FINISH: FINISH,
+    // the tree models, for the woods along the highway
+    geometry: { pine: pineGeometry, dead: deadTreeGeometry, rock: rockGeometry, bush: bushGeometry },
+    TREE_SIZE: TREE_SIZE
+  };
 })();

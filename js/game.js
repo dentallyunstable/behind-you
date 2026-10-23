@@ -30,8 +30,10 @@
     lvlForest: $('lvlForest'), unlockNote: $('unlockNote'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
     escaped: $('escaped'), nextBtn: $('nextBtn'), comingSoon: $('comingSoon'),
     endlessBtn: $('endlessBtn'), escMenuBtn: $('escMenuBtn'),
-    danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
+    danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint'),
+    healthBar: $('healthBar'), wheelArt: $('wheelArt')
   };
+  for (let i = 0; i < 10; i++) ui.healthBar.appendChild(document.createElement('i'));
 
   // ---- renderer / scene ----------------------------------------------------
   const canvas = $('game');
@@ -71,6 +73,9 @@
   const camp = Camp.create(scene, tex);
   const finish = Finish.create(scene, tex);
   const F = World.FINISH;
+  // Level 2: the highway, and the inside of the truck you drive down it
+  const hw = Highway.create(scene, tex);
+  const cab = Cab.create(finish, tex);
   // the thing behind you, and a second one for the figures you sometimes see ahead
   const chaser = Monster.create(scene, tex);
   const watcher = Monster.create(scene, tex);
@@ -110,8 +115,11 @@
     arm.add(viewmodel);
   })();
 
+  // which level you're in. 1: The Forest, 2: The Highway
+  let level = 1;
+
   // ---- sizing --------------------------------------------------------------
-  let baseFov = 70;
+  let baseFov = 70, baseFov2 = 60;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     const ratio = Math.min(window.devicePixelRatio || 1, RENDER_LINES / h);
@@ -123,7 +131,10 @@
     const hfov = 75 * Math.PI / 180;
     const vfov = 2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180 / Math.PI;
     baseFov = Math.min(Math.max(vfov, 62), 95);
-    camera.fov = baseFov;
+    // in the truck: the windscreen matters, not the roof and the floor
+    const vfov2 = 2 * Math.atan(Math.tan(35 * Math.PI / 180) / aspect) * 180 / Math.PI;
+    baseFov2 = Math.min(Math.max(vfov2, 45), 74);
+    camera.fov = level === 2 ? baseFov2 : baseFov;
     camera.updateProjectionMatrix();
     // smaller hand on tall (portrait) screens so it doesn't cover the view
     viewmodel.scale.setScalar(aspect < 1 ? 0.7 : 1);
@@ -1176,9 +1187,53 @@
     lensMat.color.setScalar(lightOn ? 1 : 0.15);
   }
 
+  // ---- Level 2: The Highway ----------------------------------------------------------
+  const drive = Drive.create({
+    finish: finish, cab: cab, hw: hw, body: body, camera: camera, ui: ui,
+    keys: keys, stick: stick, sprintBtn: sprintBtn,
+    setState: setState, state: () => state, stateTime: () => stateTime
+  });
+
+  // Which level's world is out there. The highway starts where your truck was parked,
+  // so switching only hides the forest and puts you in the driver's seat.
+  const FOG = { 1: [3, 21, 40], 2: [4, 46, 60] }; // fog from, fog to, how far the camera sees
+  function useLevel(n) {
+    level = n;
+    document.body.classList.toggle('lvl2', n === 2);
+    world.setVisible(n === 1);
+    hw.root.visible = n === 2;
+    finish.road.visible = n === 1;
+    cab.setVisible(n === 2);
+    scene.fog.near = FOG[n][0];
+    scene.fog.far = FOG[n][1];
+    camera.far = FOG[n][2];
+    camera.fov = n === 2 ? baseFov2 : baseFov;
+    camera.updateProjectionMatrix();
+    if (n === 2) {
+      hw.root.add(finish.car);
+      finish.car.add(body);
+      drive.setupLights();
+      viewmodel.visible = false;
+      lightOn = false;
+      flashlight.intensity = 0;
+    } else {
+      drive.stop();
+      finish.root.add(finish.car);
+      finish.car.position.set(F.carX, 0, -F.carD);
+      finish.car.rotation.set(0, -Math.PI / 2, 0);
+      scene.add(body);
+      finish.beams.distance = 30;
+      finish.beams.angle = 0.45;
+      finish.beams.penumbra = 0.6;
+      finish.beams.target.position.set(0, 0, 14);
+      finish.wheel.rotation.z = 0;
+    }
+  }
+
   // ---- main loop -------------------------------------------------------------
   let last = performance.now();
   let paused = false;
+  const viewer = new THREE.Vector3();
 
   function frame(now) {
     requestAnimationFrame(frame);
@@ -1187,7 +1242,9 @@
     last = now;
     stateTime += dt;
 
-    if (state === 'play') {
+    if (level === 2) {
+      drive.update(dt);
+    } else if (state === 'play') {
       updatePlay(dt);
     } else if (state === 'caught') {
       // You whip around... and for a split second you see its face.
@@ -1219,11 +1276,12 @@
     }
 
     // the highway lamp, glowing through the trees
-    finish.update(dt, body.position);
+    body.getWorldPosition(viewer);
+    finish.update(dt, viewer);
 
     // the campfire: still burning back there after you've run
-    camp.update(dt, body.position);
-    Sfx.setFire(state === 'caught' || state === 'over' ? 0 : camp.loudness(body.position));
+    camp.update(dt, viewer);
+    Sfx.setFire(state === 'caught' || state === 'over' ? 0 : camp.loudness(viewer));
     crackleTimer -= dt;
     if (crackleTimer <= 0) {
       crackleTimer = 0.04 + Math.random() * 0.4;
@@ -1234,10 +1292,11 @@
     cricketTimer -= dt;
     if (cricketTimer <= 0) {
       cricketTimer = 3 + Math.random() * 4;
-      if (state !== 'caught') Sfx.cricket();
+      if (state !== 'caught' && level === 1) Sfx.cricket();
     }
 
-    if (state === 'menu' || state === 'intro') updateCampCamera(dt);
+    if (level === 2) { /* the truck places the view */ }
+    else if (state === 'menu' || state === 'intro') updateCampCamera(dt);
     else if (state === 'play' || state === 'caught') updateCamera(dt);
     renderer.render(scene, camera);
   }
@@ -1263,5 +1322,6 @@
     blackout: () => { blackoutTimer = 0; }, watcher: () => { watcherTimer = 0; player.d = Math.max(player.d, 260); },
     player: player, getGap: () => gap, getState: () => state, input: input, stick: stick,
     jump: requestJump, escape: () => { player.d = 1990; player.x = 1; },
+    level2: () => { useLevel(2); drive.startPlay(); }, drive: drive, hw: hw,
     endless: () => startEndless(), state: () => state, carT: () => carT, places: () => world.places(), logAhead: () => world.logAhead(player.d), introT: () => introT };
 })();

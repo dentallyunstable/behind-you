@@ -11,6 +11,7 @@
   let chirpBufs = [];
   let fireGain = null, fireLevel = 0;
   let engine = null;
+  let roadGain = null, roadFilter = null, screechGain = null, screechFilter = null;
 
   function init() {
     if (ctx) {
@@ -294,7 +295,78 @@
       });
       f.connect(g);
       g.connect(master);
-      engine = { g: g, oscs: oscs };
+      engine = { g: g, f: f, oscs: oscs, base: [36, 72.5, 18.2] };
+    },
+    // the engine while driving: rpm 0..1, rough 0..1 (choking: it misses and stutters)
+    setEngine: function (rpm, rough) {
+      if (!engine) return;
+      const t = now();
+      const miss = rough > 0 && Math.random() < rough * 0.5;
+      const k = (0.8 + rpm * 1.25) * (miss ? 0.55 : 1);
+      engine.oscs.forEach((o, i) => {
+        o.frequency.cancelScheduledValues(t);
+        o.frequency.setTargetAtTime(engine.base[i] * k, t, miss ? 0.02 : 0.08);
+      });
+      engine.g.gain.cancelScheduledValues(t);
+      engine.g.gain.setTargetAtTime((0.13 + rpm * 0.13) * (miss ? 0.2 : 1), t, 0.04);
+      engine.f.frequency.setTargetAtTime(220 + rpm * 260, t, 0.1);
+    },
+    // the engine choking: a few hard coughs
+    sputter: function () {
+      tone(55, 35, 0.18, 0.45, 'square');
+      noise(0.14, 'lowpass', 300, 1, 0.45);
+      tone(48, 30, 0.22, 0.35, 'square', 0.32);
+      noise(0.1, 'lowpass', 260, 1, 0.35, 0, 0.32);
+      tone(60, 40, 0.15, 0.3, 'square', 0.7);
+    },
+    // ...and catching again: a quick rev
+    engineCatch: function () {
+      tone(50, 95, 0.35, 0.25, 'sawtooth');
+      noise(0.2, 'lowpass', 400, 1, 0.2);
+    },
+    // tyres on the road (speed 0..1); rough: off the road, on the bumpy verge (0..1)
+    setRoad: function (speed, rough) {
+      if (!ctx) return;
+      if (!roadGain) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        roadFilter = ctx.createBiquadFilter();
+        roadFilter.type = 'lowpass';
+        roadFilter.frequency.value = 300;
+        roadGain = ctx.createGain();
+        roadGain.gain.value = 0;
+        src.connect(roadFilter);
+        roadFilter.connect(roadGain);
+        roadGain.connect(master);
+        src.start();
+      }
+      const t = now();
+      roadGain.gain.setTargetAtTime(speed * 0.09 + rough * 0.22, t, 0.1);
+      roadFilter.frequency.setTargetAtTime(160 + speed * 260 + rough * 500, t, 0.1);
+      if (rough > 0 && Math.random() < rough * 0.15) noise(0.08, 'lowpass', 200, 1, 0.3 * rough);
+    },
+    // tyres screeching under hard braking (0..1)
+    setScreech: function (v) {
+      if (!ctx) return;
+      if (!screechGain) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        screechFilter = ctx.createBiquadFilter();
+        screechFilter.type = 'bandpass';
+        screechFilter.frequency.value = 2300;
+        screechFilter.Q.value = 6;
+        screechGain = ctx.createGain();
+        screechGain.gain.value = 0;
+        src.connect(screechFilter);
+        screechFilter.connect(screechGain);
+        screechGain.connect(master);
+        src.start();
+      }
+      const t = now();
+      screechGain.gain.setTargetAtTime(v * 0.35, t, 0.06);
+      screechFilter.frequency.setTargetAtTime(2100 + Math.random() * 500, t, 0.05);
     },
     engineStop: function (fade) {
       if (!engine) return;

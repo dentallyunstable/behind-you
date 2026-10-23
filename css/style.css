@@ -99,6 +99,49 @@ html, body {
 #sprint.tired { color: rgba(216,210,192,0.25); background: rgba(0,0,0,0.3); }
 #sprint.tired #sprintRing { animation: blink 0.5s steps(2) infinite; }
 
+/* things that belong to one level only (body.lvl2 = on the highway) */
+body:not(.lvl2) .l2, body.lvl2 .l1 { display: none !important; }
+
+/* Level 2: the truck's health, a chunky bar under the meters */
+#health {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+#healthBar {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 2px solid rgba(216,210,192,0.6);
+  background: rgba(0,0,0,0.45);
+  box-shadow: 2px 2px 0 #000;
+}
+#healthBar i { width: 9px; height: 12px; background: #c8b878; }
+#healthBar i.gone { background: rgba(216,210,192,0.08); }
+#healthBar.low i { background: #a04030; }
+#healthBar.low i.gone { background: rgba(216,210,192,0.08); }
+#healthBar.critical { animation: blink 0.5s steps(2) infinite; }
+
+/* Level 2: the brake button */
+#sprint .brake { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; }
+#sprint .brake svg { width: 26px; height: 18px; fill: currentColor; position: static; transform: none; }
+
+/* Level 2: the joystick is a steering wheel */
+#wheelArt {
+  position: absolute;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  fill: rgba(216,210,192,0.55);
+  filter: drop-shadow(2px 2px 0 #000);
+}
+body.lvl2 #knob { display: none; }
+body.lvl2 #stick { border-color: transparent; background: transparent; }
+
 #stick {
   position: fixed;
   width: 120px;
