@@ -9,6 +9,7 @@
     const A = Textures.ATLAS, P = Textures.PROPS;
     const fireZ = -World.CAMP.fireD;
     const root = new THREE.Group();
+    Geo.skipWhileHidden(Geo.still(root)); // (hidden while you drive the highway)
     scene.add(root);
 
     // ring of stones, firewood, the tent, a log to sit on
@@ -33,17 +34,17 @@
       g.rotateX(Math.PI / 2);
       ring.push(part(g, A.bark, mat(1.9 + (i % 2) * 0.2 + (i > 1 ? 0.1 : 0), 0.09 + (i > 1 ? 0.16 : 0), fireZ + 1.2 + (i % 2) * 0.19, 0, 0.2, 0)));
     }
-    root.add(new THREE.Mesh(merge(ring), treeMat));
+    root.add(Geo.still(new THREE.Mesh(merge(ring), treeMat)));
 
     const tent = new THREE.Mesh(Props.tent(P, false), new THREE.MeshLambertMaterial({ map: tex.props }));
     tent.position.set(-2.7, 0, fireZ + 2.3);
     tent.rotation.y = 2.3; // its opening looks at the fire
-    root.add(tent);
+    root.add(Geo.still(tent));
 
     // the flames: a few crude cones, re-shaped a few times a second
     const flames = new THREE.Group();
     flames.position.set(0, 0.1, fireZ);
-    root.add(flames);
+    root.add(Geo.still(flames));
     const flameParts = [
       { color: 0xd8461a, r: 0.32, h: 0.75, x: 0, z: 0 },
       { color: 0xf07a22, r: 0.22, h: 0.65, x: 0.12, z: 0.06 },
@@ -73,7 +74,7 @@
     // firelight
     const light = new THREE.PointLight(0xff8a3a, 1.6, 12, 1);
     light.position.set(0, 0.7, fireZ);
-    root.add(light);
+    root.add(Geo.still(light));
 
     // the glow you still see from far away, after you've run
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({

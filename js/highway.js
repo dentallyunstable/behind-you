@@ -22,6 +22,7 @@
     root.position.set(F.carX, 0, -F.carD);
     root.rotation.y = Math.PI / 2; // local -z runs along the highway (world -x)
     root.visible = false;
+    Geo.still(root);
     scene.add(root);
 
     // ---- road and ground: strips of vertices that follow the bends ---------------
@@ -55,7 +56,7 @@
       const mesh = new THREE.Mesh(geo, material);
       mesh.frustumCulled = false;
       mesh.userData = { cols: cols, y: y };
-      root.add(mesh);
+      root.add(Geo.still(mesh));
       return mesh;
     }
     const road = strip(ROAD_COLS, new THREE.MeshLambertMaterial({ map: roadTex }), 0.02);
@@ -67,7 +68,7 @@
       const m = new THREE.InstancedMesh(geo, material, max);
       m.frustumCulled = false;
       m.count = 0;
-      root.add(m);
+      root.add(Geo.still(m));
       return m;
     }
     // white posts along the shoulder, with little reflectors that catch your headlights
@@ -86,15 +87,27 @@
       puddle: inst(puddleGeo, new THREE.MeshBasicMaterial({ map: tex.puddle, transparent: true, depthWrite: false }), 6),
       plate: inst(plateGeo, new THREE.MeshLambertMaterial({ map: tex.deerSign, alphaTest: 0.5, emissive: 0x1a1404 }), 4),
       signPost: inst(signPostGeo, new THREE.MeshLambertMaterial({ color: 0x5c5c5a }), 4),
-      pine: inst(World.geometry.pine(A), treeMat, 900),
-      dead: inst(World.geometry.dead(A), treeMat, 300),
-      rock: inst(World.geometry.rock(A), treeMat, 120),
       post: inst(postGeo, new THREE.MeshLambertMaterial({ color: 0x8a8a84 }), 24),
       refl: inst(reflGeo, new THREE.MeshBasicMaterial({ color: 0x9a6a1c }), 24)
     };
+    // The woods are there twice: what the windscreen can see (ahead of you and beside you, layer 1)
+    // and what the mirror can see (behind you, layer 2). Each view only draws its own trees,
+    // and neither draws the trees still lost in the fog far ahead.
+    const WOODS = { pine: [World.geometry.pine(A), 600, 420], dead: [World.geometry.dead(A), 200, 150], rock: [World.geometry.rock(A), 80, 60] };
+    const SEEN_BEHIND = 22;     // the windscreen (and a glance out of a side window) sees this far back...
+    const SEEN_AHEAD = 50;      // ...and this far ahead before the fog swallows everything
+    const MIRROR_AHEAD = 4;     // the mirror sees nothing in front of the cab
+    const ahead = {}, behind = {};
+    Object.keys(WOODS).forEach(k => {
+      ahead[k] = inst(WOODS[k][0], treeMat, WOODS[k][1]);
+      ahead[k].layers.set(1);
+      behind[k] = inst(WOODS[k][0], treeMat, WOODS[k][2]);
+      behind[k].layers.set(2);
+    });
 
     // ---- generation -------------------------------------------------------------
     let rows = [];
+    let puddles = [];           // the puddles on the road right now: { x, d, w }
     let nextRowD = 0;
     let nextPuddleD = 0, nextSignD = 0;
     let cx = START_CX, slope = 0, slopeTarget = 0, bendD = 0;
@@ -110,6 +123,7 @@
 
     function reset() {
       rows = [];
+      puddles = [];
       nextRowD = -BEHIND;
       cx = START_CX;
       slope = 0;
@@ -154,7 +168,9 @@
       // now and then a puddle on the road (what's left of the rain)
       if (d >= nextPuddleD) {
         const w = 2.2 + Math.random() * 1.4;
-        items.push({ kind: 'puddle', x: cx + (Math.random() * 2 - 1) * 2.2, z: -d, s: 1, sx: w, sz: w * (0.6 + Math.random() * 0.3), ry: (Math.random() - 0.5) * 0.4, rz: 0, puddle: { d: d, w: w } });
+        const it = { kind: 'puddle', x: cx + (Math.random() * 2 - 1) * 2.2, z: -d, s: 1, sx: w, sz: w * (0.6 + Math.random() * 0.3), ry: (Math.random() - 0.5) * 0.4, rz: 0 };
+        items.push(it);
+        puddles.push({ x: it.x, d: d, w: w });
         nextPuddleD = d + 170 + Math.random() * 260;
       }
       // a deer crossing sign on the right
@@ -177,22 +193,41 @@
     }
 
     const dummy = new THREE.Object3D();
-    function rebuild() {
-      // trees and posts
-      const counts = {};
-      Object.keys(kinds).forEach(k => { counts[k] = 0; });
-      rows.forEach(r => r.items.forEach(it => {
-        const m = kinds[it.kind];
-        if (counts[it.kind] >= m.instanceMatrix.count) return;
+    const meshes = Object.keys(kinds).map(k => kinds[k]).concat(Object.keys(WOODS).map(k => ahead[k]), Object.keys(WOODS).map(k => behind[k]));
+    // the next free slot of an instanced mesh gets this thing (its place is worked out once, then kept)
+    function put(m, it) {
+      if (m.count >= m.instanceMatrix.count) return;
+      if (!it.m) {
         dummy.position.set(it.x, 0, it.z);
         dummy.rotation.set(0, it.ry, it.rz);
         dummy.scale.set(it.sx || it.s, it.s, it.sz || it.s);
         dummy.updateMatrix();
-        m.setMatrixAt(counts[it.kind]++, dummy.matrix);
-      }));
-      Object.keys(kinds).forEach(k => {
-        kinds[k].count = counts[k];
-        kinds[k].instanceMatrix.needsUpdate = true;
+        it.m = dummy.matrix.toArray(new Float32Array(16));
+      }
+      m.instanceMatrix.array.set(it.m, m.count * 16);
+      m.count++;
+    }
+    function rebuild() {
+      // trees and posts. The rows always reach AHEAD past you (to within a row), so you're about here:
+      const youD = nextRowD - AHEAD;
+      meshes.forEach(m => { m.count = 0; });
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r], items = row.items;
+        const forWindscreen = row.d >= youD - ROW - SEEN_BEHIND && row.d <= youD + SEEN_AHEAD;
+        const forMirror = row.d <= youD + MIRROR_AHEAD;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (kinds[it.kind]) put(kinds[it.kind], it);
+          else {
+            if (forWindscreen) put(ahead[it.kind], it);
+            if (forMirror) put(behind[it.kind], it);
+          }
+        }
+      }
+      meshes.forEach(m => {
+        // (only send the graphics card the part that's in use)
+        m.instanceMatrix.updateRange.count = m.count * 16;
+        m.instanceMatrix.needsUpdate = true;
       });
       // the road and the ground under it
       [road, ground].forEach(mesh => {
@@ -232,6 +267,7 @@
         rows.shift();
         dirty = true;
       }
+      while (puddles.length && rows.length && puddles[0].d < rows[0].d) puddles.shift();
       if (dirty) {
         rebuild();
         dirty = false;
@@ -251,13 +287,12 @@
       return (centerAt(d + 1) - centerAt(d - 1)) / 2;
     }
 
-    // the puddles between d0 and d1: [{ x, d, w }]
+    // the puddles between d0 and d1: [{ x, d, w }] (the same list every time: use it straight away)
+    const found = [];
     function puddlesBetween(d0, d1) {
-      const out = [];
-      rows.forEach(r => r.items.forEach(it => {
-        if (it.puddle && it.puddle.d >= d0 && it.puddle.d < d1) out.push({ x: it.x, d: it.puddle.d, w: it.puddle.w });
-      }));
-      return out;
+      found.length = 0;
+      for (let i = 0; i < puddles.length; i++) if (puddles[i].d >= d0 && puddles[i].d < d1) found.push(puddles[i]);
+      return found;
     }
 
     const deer = makeDeer(tex);
@@ -272,7 +307,7 @@
     const rain = new THREE.LineSegments(rainGeo, rainMat);
     rain.frustumCulled = false;
     rain.visible = false;
-    root.add(rain);
+    root.add(Geo.still(rain));
     const drops = [];
     for (let i = 0; i < RAIN; i++) drops.push({ x: 0, y: Math.random() * 9, z: 0, fresh: true });
     // amount 0..1, around the point (x, d)
@@ -320,11 +355,16 @@
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
       mesh.position.set(x, y, z);
       mesh.rotation.set(rx || 0, 0, rz || 0);
-      parent.add(mesh);
+      parent.add(Geo.still(mesh));
       return mesh;
+    }
+    // the same box, baked into a part (the head's boxes never move apart: one piece per material)
+    function boxPart(w, h, d, x, y, z, rx, rz) {
+      return Geo.part(new THREE.BoxGeometry(w, h, d), [0, 0, 1, 1], Geo.mat(x, y, z, rx || 0, 0, rz || 0));
     }
     const root = new THREE.Group();
     root.visible = false;
+    Geo.skipWhileHidden(root);
     const body = new THREE.Group();
     body.position.y = 1.0;
     root.add(body);
@@ -338,17 +378,18 @@
     const head = new THREE.Group();
     head.position.set(0, 0.55, 0.02);
     neck.add(head);
-    box(0.15, 0.17, 0.3, hide, 0, 0.02, 0.1, head, -0.45);
-    box(0.09, 0.09, 0.08, dark, 0, -0.06, 0.25, head, -0.45);
-    box(0.04, 0.14, 0.07, hide, 0.09, 0.14, -0.02, head, 0, -0.7);
-    box(0.04, 0.14, 0.07, hide, -0.09, 0.14, -0.02, head, 0, 0.7);
-    // antlers
+    const antlers = [];
     [-1, 1].forEach(sd => {
-      box(0.025, 0.32, 0.025, pale, sd * 0.08, 0.27, -0.04, head, -0.3, sd * -0.35);
-      box(0.02, 0.15, 0.02, pale, sd * 0.14, 0.33, 0.04, head, 0.5, sd * -0.2);
-      box(0.02, 0.13, 0.02, pale, sd * 0.17, 0.42, -0.08, head, -0.6, sd * -0.5);
+      antlers.push(boxPart(0.025, 0.32, 0.025, sd * 0.08, 0.27, -0.04, -0.3, sd * -0.35));
+      antlers.push(boxPart(0.02, 0.15, 0.02, sd * 0.14, 0.33, 0.04, 0.5, sd * -0.2));
+      antlers.push(boxPart(0.02, 0.13, 0.02, sd * 0.17, 0.42, -0.08, -0.6, sd * -0.5));
     });
-    const eyes = [-1, 1].map(sd => box(0.035, 0.03, 0.035, eyeMat, sd * 0.075, 0.06, 0.12, head));
+    [
+      [hide, [boxPart(0.15, 0.17, 0.3, 0, 0.02, 0.1, -0.45), boxPart(0.04, 0.14, 0.07, 0.09, 0.14, -0.02, 0, -0.7), boxPart(0.04, 0.14, 0.07, -0.09, 0.14, -0.02, 0, 0.7)]],
+      [dark, [boxPart(0.09, 0.09, 0.08, 0, -0.06, 0.25, -0.45)]],
+      [pale, antlers],
+      [eyeMat, [-1, 1].map(sd => boxPart(0.035, 0.03, 0.035, sd * 0.075, 0.06, 0.12))]
+    ].forEach(p => head.add(Geo.still(new THREE.Mesh(Geo.merge(p[1]), p[0]))));
     const legs = [[0.12, 0.42], [-0.12, 0.42], [0.12, -0.42], [-0.12, -0.42]].map(p => {
       const hip = new THREE.Group();
       hip.position.set(p[0], -0.15, p[1]);
@@ -395,8 +436,7 @@
         t += dt;
         acc += dt;
         if (acc >= 1 / 12) { acc = 0; pose(); }
-      },
-      eyes: eyes
+      }
     };
   }
 

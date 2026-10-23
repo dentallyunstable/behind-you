@@ -51,6 +51,7 @@
   scene.add(body);
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 40);
   camera.rotation.order = 'YXZ';
+  camera.layers.enable(1); // the highway's trees that can be seen through the windscreen (the mirror sees layer 2)
   body.add(camera);
 
   // Almost no light except the flashlight.
@@ -93,27 +94,27 @@
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x6a5a50 });
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 6), metal);
     barrel.rotation.x = Math.PI / 2;
-    torch.add(barrel);
+    torch.add(Geo.still(barrel));
     const head = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.034, 0.07, 6), metal);
     head.rotation.x = Math.PI / 2;
     head.position.z = -0.15;
-    torch.add(head);
+    torch.add(Geo.still(head));
     const lens = new THREE.Mesh(new THREE.CircleGeometry(0.042, 6), lensMat);
     lens.position.z = -0.186;
-    torch.add(lens);
+    torch.add(Geo.still(lens));
     const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.085, 0.11), skin);
     hand.position.set(0.01, -0.02, 0.03);
-    handParts.add(hand);
+    handParts.add(Geo.still(hand));
     const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.07), skin);
     thumb.position.set(-0.045, 0.02, 0.0);
     thumb.rotation.y = 0.3;
-    handParts.add(thumb);
+    handParts.add(Geo.still(thumb));
     const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.3), new THREE.MeshBasicMaterial({ color: 0x1c2230 }));
     sleeve.position.set(0.03, -0.04, 0.22);
-    handParts.add(sleeve);
+    handParts.add(Geo.still(sleeve));
     viewmodel.position.set(0.24, -0.24, -0.42);
     viewmodel.rotation.set(0.08, 0.12, 0);
-    arm.add(viewmodel);
+    arm.add(Geo.skipWhileHidden(viewmodel));
   })();
 
   // which level you're in. 1: The Forest, 2: The Highway
@@ -346,6 +347,8 @@
     useLevel(2);
     drive.dress();
     const cam = new THREE.PerspectiveCamera(30, target.width / target.height, 0.05, 60);
+    cam.layers.enable(1); // (from out here: the trees in front of the truck and behind it)
+    cam.layers.enable(2);
     hw.root.add(cam);
     cam.position.set(3.4, 1.2, -6.6);
     cam.lookAt(hw.root.localToWorld(new THREE.Vector3(-0.9, 1.5, 0.5)));
@@ -1408,6 +1411,8 @@
     if (level === 2) { /* the truck places the view */ }
     else if (state === 'menu' || state === 'intro') updateCampCamera(dt);
     else if (state === 'play' || state === 'caught') updateCamera(dt);
+    // running ahead, the trees behind you can't be seen; any other time they can
+    if (level === 1) world.setLookingBack(state !== 'play' || lookT >= 0);
     renderer.render(scene, camera);
   }
 

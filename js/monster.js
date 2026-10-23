@@ -4,10 +4,15 @@
 (function () {
   'use strict';
 
-  function box(w, h, d, mat, y) {
+  const FULL = [0, 0, 1, 1];
+
+  function boxGeo(w, h, d, y) {
     const g = new THREE.BoxGeometry(w, h, d);
     g.translate(0, y, 0);
-    return new THREE.Mesh(g, mat);
+    return g;
+  }
+  function box(w, h, d, mat, y) {
+    return Geo.still(new THREE.Mesh(boxGeo(w, h, d, y), mat));
   }
 
   function create(scene, tex) {
@@ -38,7 +43,7 @@
     hips.add(torso);
     const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.12, 1.0, 5), skin);
     chest.position.y = 0.5;
-    torso.add(chest);
+    torso.add(Geo.still(chest));
 
     // arms: far too long, with long fingers
     const arms = [-1, 1].map(side => {
@@ -49,13 +54,10 @@
       const elbow = new THREE.Group();
       elbow.position.y = -0.68;
       a.add(elbow);
-      elbow.add(box(0.055, 0.65, 0.055, skin, -0.32));
-      for (let f = -1; f <= 1; f++) {
-        const finger = box(0.018, 0.24, 0.018, skin, -0.12);
-        finger.position.set(f * 0.025, -0.64, 0);
-        finger.rotation.z = f * 0.12;
-        elbow.add(finger);
-      }
+      // the forearm and its long fingers are one piece
+      const fore = [Geo.part(boxGeo(0.055, 0.65, 0.055, -0.32), FULL)];
+      for (let f = -1; f <= 1; f++) fore.push(Geo.part(boxGeo(0.018, 0.24, 0.018, -0.12), FULL, Geo.mat(f * 0.025, -0.64, 0, 0, 0, f * 0.12)));
+      elbow.add(Geo.still(new THREE.Mesh(Geo.merge(fore), skin)));
       return { a: a, elbow: elbow, side: side };
     });
 
@@ -69,17 +71,14 @@
     const headGeo = new THREE.BoxGeometry(0.26, 0.4, 0.28);
     headGeo.translate(0, 0.2, 0);
     // box sides: +x, -x, +y, -y, +z (the face), -z
-    head.add(new THREE.Mesh(headGeo, [skin, skin, skin, skin, faceMat, skin]));
+    head.add(Geo.still(new THREE.Mesh(headGeo, [skin, skin, skin, skin, faceMat, skin])));
     const eyes = new THREE.Group();
     eyes.position.set(0, 0.25, 0.155); // a little in front of the face, so far away it never covers them
     head.add(eyes);
-    [-1, 1].forEach(side => {
-      const eye = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.03), eyeMat);
-      eye.position.x = side * 0.049;
-      eyes.add(eye);
-    });
+    eyes.add(Geo.still(new THREE.Mesh(Geo.merge([-1, 1].map(side => Geo.part(new THREE.PlaneGeometry(0.035, 0.03), FULL, Geo.mat(side * 0.049, 0, 0)))), eyeMat)));
 
     root.visible = false;
+    Geo.skipWhileHidden(root);
     scene.add(root);
 
     // ---- posing ------------------------------------------------------------

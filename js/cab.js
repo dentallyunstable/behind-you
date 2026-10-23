@@ -6,31 +6,31 @@
 
   function create(finish, tex) {
     const car = finish.car;
+    const FULL = [0, 0, 1, 1];
     const root = new THREE.Group();
     root.visible = false;
-    car.add(root);
+    car.add(Geo.skipWhileHidden(Geo.still(root)));
 
     // ---- your hands on the wheel ---------------------------------------------------
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x4e4239 });
     const sleeve = new THREE.MeshBasicMaterial({ color: 0x151a23 });
     const hands = [];
     const arms = new THREE.Group();
-    root.add(arms);
+    root.add(Geo.still(arms));
     const onWheel = new THREE.Group();
     onWheel.visible = false;
-    finish.wheel.add(onWheel);
+    finish.wheel.add(Geo.still(onWheel));
     // 10 and 2 o'clock (seen from the seat, +x is on your left)
     [{ a: 0.5, elbow: [0.66, 1.0, 0.3] }, { a: Math.PI - 0.5, elbow: [0.18, 1.0, 0.3] }].forEach(h => {
       const grip = new THREE.Group();
       grip.position.set(Math.cos(h.a) * 0.17, Math.sin(h.a) * 0.17, 0);
       grip.rotation.z = h.a;
-      onWheel.add(grip);
-      const fist = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.065, 0.07), skin);
-      fist.position.set(0.012, 0, -0.012);
-      grip.add(fist);
-      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.05, 0.022), skin);
-      thumb.position.set(-0.02, 0.0, 0.03);
-      grip.add(thumb);
+      onWheel.add(Geo.still(grip));
+      // the fist and the thumb
+      grip.add(Geo.still(new THREE.Mesh(Geo.merge([
+        Geo.part(new THREE.BoxGeometry(0.075, 0.065, 0.07), FULL, Geo.mat(0.012, 0, -0.012)),
+        Geo.part(new THREE.BoxGeometry(0.022, 0.05, 0.022), FULL, Geo.mat(-0.02, 0.0, 0.03))
+      ]), skin)));
       // the forearm runs from the wrist back to the elbow (below the view)
       const armGeo = new THREE.BoxGeometry(0.06, 0.06, 1);
       armGeo.translate(0, 0, 0.5);
@@ -67,7 +67,7 @@
     const gauges = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.11), gaugeMat);
     gauges.position.set(0.43, 1.2, 0.893);
     gauges.rotation.y = Math.PI; // facing you
-    root.add(gauges);
+    root.add(Geo.still(gauges));
     const needleMat = new THREE.MeshBasicMaterial({ color: 0xff5a1a });
     const needleGeo = new THREE.BoxGeometry(0.005, 0.036, 0.002);
     needleGeo.translate(0, 0.016, 0.001);
@@ -81,18 +81,13 @@
     // ---- lights: tail lights (they light up whatever is behind you) and the hazards ---
     const tail = new THREE.PointLight(0xff2a14, 0, 15, 1.1);
     tail.position.set(0, 1.0, -3.3);
-    car.add(tail);
+    car.add(Geo.still(tail));
     const hazardLight = new THREE.PointLight(0xff9030, 0, 7, 1.5);
     hazardLight.position.set(0, 1.1, 3.0);
-    car.add(hazardLight);
+    car.add(Geo.still(hazardLight));
     const hazardMat = new THREE.MeshLambertMaterial({ color: 0x2a1a08 });
-    const hz = [];
-    [[0.9, 0.62, 2.62], [-0.9, 0.62, 2.62]].forEach(p => {
-      const g = new THREE.BoxGeometry(0.16, 0.08, 0.04);
-      g.translate(p[0], p[1], p[2]);
-      hz.push(g);
-    });
-    hz.forEach(g => root.add(new THREE.Mesh(g, hazardMat)));
+    const hz = [[0.9, 0.62, 2.62], [-0.9, 0.62, 2.62]].map(p => Geo.part(new THREE.BoxGeometry(0.16, 0.08, 0.04), FULL, Geo.mat(p[0], p[1], p[2])));
+    root.add(Geo.still(new THREE.Mesh(Geo.merge(hz), hazardMat)));
 
 
     // ---- the rear-view mirror: a tiny camera looking back through the rear window ----
@@ -108,16 +103,20 @@
     root.add(mirrorRoot);
     mirrorRoot.add(mirror, mirrorFrame);
     mirror.position.z = 0.016;
+    Geo.still(mirror);
+    Geo.still(mirrorFrame);
     car.updateMatrixWorld();
     mirrorRoot.lookAt(car.localToWorld(EYE.clone())); // angled at your eyes
+    Geo.still(mirrorRoot);
     const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.02), finish.propsMat);
     stalk.position.set(0.3, 1.8, 1.09);
-    root.add(stalk);
+    root.add(Geo.still(stalk));
     // (it sits further back than the mirror, so the rear window fills it)
     const mirrorCam = new THREE.PerspectiveCamera(20, 0.3 / 0.094, 0.1, 50);
     mirrorCam.position.set(0, 1.64, 0.28);
     mirrorCam.rotation.set(-0.06, 0, 0); // looking back (the truck's -z), a little down
-    car.add(mirrorCam);
+    mirrorCam.layers.enable(2); // only the trees behind the truck
+    car.add(Geo.still(mirrorCam));
     let mirrorTick = 0;
     function renderMirror(renderer, scene) {
       // like the monster, the mirror only updates every other frame: choppy, old-school
@@ -143,7 +142,8 @@
     const cracks = new THREE.Mesh(new THREE.PlaneGeometry(1.84, 0.74), crackMat);
     cracks.position.set(0, 1.48, 1.236);
     cracks.rotation.x = -0.25;
-    root.add(cracks);
+    cracks.visible = false; // (until the first crack: an empty sheet over the glass still costs)
+    root.add(Geo.still(cracks));
     // a jagged line from (x, y), splitting now and then
     function crackLine(x, y, a, len, w) {
       for (let i = 0; i < len; i++) {
@@ -166,6 +166,7 @@
       cx.fillStyle = 'rgba(190,198,206,0.5)';
       cx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
       crackTex.needsUpdate = true;
+      cracks.visible = true;
     }
 
     // ---- water on the windscreen, and the wipers -------------------------------------
@@ -174,7 +175,7 @@
     const glass = new THREE.Group();
     glass.position.set(0, 1.48, 1.25);
     glass.rotation.x = -0.25;
-    root.add(glass);
+    root.add(Geo.still(glass));
     const wc = document.createElement('canvas');
     wc.width = 128;
     wc.height = 52;
@@ -185,7 +186,8 @@
     const waterMat = new THREE.MeshBasicMaterial({ map: waterTex, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
     const water = new THREE.Mesh(new THREE.PlaneGeometry(GLASS_W, GLASS_H), waterMat);
     water.position.z = -0.016;
-    glass.add(water);
+    water.visible = false; // (only while there's water on the glass)
+    glass.add(Geo.still(water));
     // canvas pixel of a point on the glass (the canvas is seen from inside, so +x is on the canvas' right)
     function toCanvas(x, y) {
       return [(x / GLASS_W + 0.5) * wc.width, (0.5 - y / GLASS_H) * wc.height];
@@ -208,6 +210,7 @@
       }
       wetness = Math.min(1, wetness + amount);
       waterTex.needsUpdate = true;
+      water.visible = true;
     }
     let wetness = 0; // how much of the glass is covered (it drives the blur)
 
@@ -223,7 +226,7 @@
       glass.add(pivot);
       const arm = new THREE.Mesh(wiperGeo, wiperMat);
       arm.scale.x = w.len;
-      pivot.add(arm);
+      pivot.add(Geo.still(arm));
       return { pivot: pivot, x: w.x, len: w.len, a: PARK };
     });
     let wipeT = -1, wipeSweeps = 0;
@@ -267,6 +270,7 @@
         wipers.forEach(w => { w.a = PARK; w.pivot.rotation.z = PARK; });
         wx.clearRect(0, 0, wc.width, wc.height);
         waterTex.needsUpdate = true;
+        water.visible = false;
         wetness = 0;
       }
     }
@@ -324,7 +328,7 @@
     const fogMat = new THREE.MeshLambertMaterial({ map: fogTex, transparent: true, depthWrite: false, emissive: 0x2a2a2c, opacity: 0 });
     const rearFog = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.4), fogMat);
     rearFog.position.set(0, 1.5, -0.4);
-    root.add(rearFog);
+    root.add(Geo.still(rearFog));
     fogUp();
 
     // ---- dents in the bonnet ------------------------------------------------------
@@ -372,6 +376,8 @@
       cx.clearRect(0, 0, cc.width, cc.height);
       wx.clearRect(0, 0, wc.width, wc.height);
       waterTex.needsUpdate = true;
+      water.visible = false;
+      cracks.visible = false;
       wetness = 0;
       wipeT = -1;
       wipers.forEach(w => { w.a = PARK; w.pivot.rotation.z = PARK; });
@@ -386,13 +392,16 @@
     }
 
     // keep the forearms attached to the hands as the wheel turns; the smoke drifts back over the glass
+    const wheelMat = finish.wheel.parent.matrix; // where the wheel sits in the truck (it only spins)
+    const Z = new THREE.Vector3(0, 0, 1), up = new THREE.Vector3(), look = new THREE.Matrix4(), turn = new THREE.Quaternion();
     function update(dt) {
-      car.updateMatrixWorld();
+      // (worked out in the truck's own frame; "up" is the world's up as the truck tips and rolls on its springs)
+      up.set(0, 1, 0).applyQuaternion(turn.copy(car.quaternion).invert());
       hands.forEach(h => {
-        h.grip.getWorldPosition(tmp);
-        car.worldToLocal(tmp);
+        tmp.copy(h.grip.position).applyAxisAngle(Z, finish.wheel.rotation.z).applyMatrix4(wheelMat);
         h.arm.position.copy(tmp);
-        h.arm.lookAt(car.localToWorld(h.elbow.clone()));
+        look.lookAt(h.elbow, tmp, up); // its length points from the hand to the elbow
+        h.arm.quaternion.setFromRotationMatrix(look);
         h.arm.scale.z = tmp.distanceTo(h.elbow);
       });
       if (!dt) return;

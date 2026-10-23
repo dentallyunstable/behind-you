@@ -13,7 +13,7 @@
   function create(scene, tex) {
     const F = World.FINISH, P = Textures.PROPS;
     const root = new THREE.Group();
-    scene.add(root);
+    scene.add(Geo.still(root));
 
     const paintMat = new THREE.MeshLambertMaterial({ map: tex.paint });
     const propsMat = new THREE.MeshLambertMaterial({ map: tex.props });
@@ -29,7 +29,7 @@
     roadGeo.rotateX(-Math.PI / 2);
     const road = new THREE.Mesh(roadGeo, new THREE.MeshLambertMaterial({ map: tex.road }));
     road.position.set(0, 0.02, -(F.roadD0 + F.roadD1) / 2);
-    root.add(road);
+    root.add(Geo.still(road));
 
     // guardrail on the far side, broken where you'll cross it
     const rail = [];
@@ -41,7 +41,7 @@
     rail.push(box(23.2, 0.22, 0.06, FULL, mat(-18.5, 0.62, railZ + 0.07)));
     rail.push(box(26.2, 0.22, 0.06, FULL, mat(16.6, 0.62, railZ + 0.07)));
     rail.push(box(2.6, 0.22, 0.06, FULL, mat(-7.6, 0.4, railZ + 0.3, 0.5, 0.5, -0.4))); // bent end
-    root.add(new THREE.Mesh(merge(rail), metalMat));
+    root.add(Geo.still(new THREE.Mesh(merge(rail), metalMat)));
 
     // ---- the streetlight ------------------------------------------------------
     const lampZ = -F.lampD;
@@ -50,14 +50,14 @@
       box(0.07, 0.07, 2.3, FULL, mat(F.lampX, 6.95, lampZ - 1.1)),
       box(0.36, 0.14, 0.6, FULL, mat(F.lampX, 6.9, lampZ - 2.3))
     ];
-    root.add(new THREE.Mesh(merge(lampParts), metalMat));
+    root.add(Geo.still(new THREE.Mesh(merge(lampParts), metalMat)));
     const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffb060 });
     const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.42), bulbMat);
     bulb.position.set(F.lampX, 6.82, lampZ - 2.3);
-    root.add(bulb);
+    root.add(Geo.still(bulb));
     const lampLight = new THREE.PointLight(0xff9a40, 1.5, 17, 1);
     lampLight.position.set(F.lampX, 6.3, lampZ - 2.3);
-    root.add(lampLight);
+    root.add(Geo.still(lampLight));
     // its glow, seen far off between the trees
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: tex.glow, color: 0xff9a40, fog: false, transparent: true,
@@ -73,7 +73,9 @@
     car.rotation.y = -Math.PI / 2; // parked facing -x, driver's door towards the forest
     root.add(car);
 
-    car.add(new THREE.Mesh(merge([
+    // (the pieces of the truck never move on it, apart from the wheel and the door)
+    const fixed = m => car.add(Geo.still(m));
+    fixed(new THREE.Mesh(merge([
       box(2.0, 0.5, 5.2, FULL, mat(0, 0.6, 0), 2, 1, 5),
       box(0.07, 0.25, 1.62, FULL, mat(-0.97, 0.97, 0.43)),
       box(1.92, 0.08, 1.45, FULL, mat(0, 1.86, 0.35), 2, 1, 2),
@@ -97,7 +99,7 @@
     const hood = new THREE.Mesh(hoodGeo, hoodMat);
     hood.position.set(0, 0.97, 1.95);
     hood.userData.rest = hoodGeo.attributes.position.array.slice();
-    car.add(hood);
+    fixed(hood);
 
     const dark = [
       box(1.4, 0.3, 0.05, P.soot, mat(0, 0.75, 2.61)),
@@ -117,13 +119,13 @@
       g.rotateZ(Math.PI / 2);
       dark.push(part(g, P.soot, mat(w[0], 0.42, w[1])));
     });
-    car.add(new THREE.Mesh(merge(dark), propsMat));
+    fixed(new THREE.Mesh(merge(dark), propsMat));
 
     // the steering wheel: it turns (spin) when you steer
     const wheel = new THREE.Group();
     wheel.position.set(0.42, 1.3, 0.86);
     wheel.rotation.x = -0.45;
-    car.add(wheel);
+    fixed(wheel);
     const wheelSpin = new THREE.Group();
     wheel.add(wheelSpin);
     const spokes = [part(new THREE.TorusGeometry(0.17, 0.022, 4, 10), P.soot)];
@@ -131,24 +133,24 @@
       spokes.push(box(0.025, 0.16, 0.015, P.soot, mat(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0, 0, 0, a - Math.PI / 2)));
     });
     spokes.push(part(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 6), P.soot, mat(0, 0, 0, Math.PI / 2, 0, 0)));
-    wheelSpin.add(new THREE.Mesh(merge(spokes), propsMat));
+    wheelSpin.add(Geo.still(new THREE.Mesh(merge(spokes), propsMat)));
 
-    car.add(new THREE.Mesh(merge([
+    fixed(new THREE.Mesh(merge([
       box(0.3, 0.18, 0.05, FULL, mat(0.7, 0.85, 2.61)),
       box(0.3, 0.18, 0.05, FULL, mat(-0.7, 0.85, 2.61))
     ]), headMat));
-    car.add(new THREE.Mesh(merge([
+    fixed(new THREE.Mesh(merge([
       box(0.08, 0.25, 0.12, FULL, mat(0.96, 1.05, -2.55)),
       box(0.08, 0.25, 0.12, FULL, mat(-0.96, 1.05, -2.55))
     ]), tailMat));
-    car.add(new THREE.Mesh(merge([
+    fixed(new THREE.Mesh(merge([
       box(1.84, 0.74, 0.02, FULL, mat(0, 1.48, 1.25, -0.25, 0, 0)),
       box(0.02, 0.7, 1.55, FULL, mat(-0.96, 1.47, 0.45))
     ]), glassMat));
 
     // dashboard dials and the headlights: dark until the engine runs
     const dashMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    car.add(new THREE.Mesh(merge([
+    fixed(new THREE.Mesh(merge([
       box(0.12, 0.07, 0.01, FULL, mat(0.34, 1.2, 0.9)),
       box(0.12, 0.07, 0.01, FULL, mat(0.52, 1.2, 0.9)),
       box(0.3, 0.04, 0.01, FULL, mat(-0.1, 1.17, 0.9))
@@ -160,22 +162,22 @@
     // the dome light: on while the door is open
     const dome = new THREE.PointLight(0xffd9a0, 0, 3.2, 1);
     dome.position.set(0, 1.7, 0.4);
-    car.add(dome);
+    fixed(dome);
 
     // the driver's door, hinged at its front edge; it swings out towards +x
     const door = new THREE.Group();
     door.position.set(0.98, 0, 1.22);
     car.add(door);
-    door.add(new THREE.Mesh(merge([
+    door.add(Geo.still(new THREE.Mesh(merge([
       box(0.07, 0.6, 1.58, FULL, mat(0, 0.85, -0.79)),
       box(0.05, 0.05, 1.58, FULL, mat(0, 1.84, -0.79)),
       box(0.05, 0.7, 0.06, FULL, mat(0, 1.5, -1.55))
-    ]), paintMat));
-    door.add(new THREE.Mesh(merge([
+    ]), paintMat)));
+    door.add(Geo.still(new THREE.Mesh(merge([
       box(0.02, 0.5, 1.5, P.canvas, mat(-0.045, 0.86, -0.79)),
       box(0.03, 0.04, 0.16, P.soot, mat(0.05, 1.05, -1.3))
-    ]), propsMat));
-    door.add(new THREE.Mesh(box(0.02, 0.66, 1.5, FULL, mat(0, 1.5, -0.8)), glassMat));
+    ]), propsMat)));
+    door.add(Geo.still(new THREE.Mesh(box(0.02, 0.66, 1.5, FULL, mat(0, 1.5, -0.8)), glassMat)));
 
     // a point given in the truck's own coordinates, in the world
     function carPoint(x, y, z) {

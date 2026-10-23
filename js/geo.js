@@ -15,17 +15,35 @@
     return g;
   }
 
+  // Triangles with no area (the tip of every cone has a ring of them) never show, but they'd still
+  // cost on every frame, so they're left out.
+  function flat(p, i) {
+    const ax = p[i + 3] - p[i], ay = p[i + 4] - p[i + 1], az = p[i + 5] - p[i + 2];
+    const bx = p[i + 6] - p[i], by = p[i + 7] - p[i + 1], bz = p[i + 8] - p[i + 2];
+    const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
+    return cx * cx + cy * cy + cz * cz < 1e-20;
+  }
+
   function merge(parts) {
     let n = 0;
     parts.forEach(p => { n += p.attributes.position.count; });
-    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+    let pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
     let o = 0;
     parts.forEach(p => {
-      pos.set(p.attributes.position.array, o * 3);
-      nor.set(p.attributes.normal.array, o * 3);
-      uv.set(p.attributes.uv.array, o * 2);
-      o += p.attributes.position.count;
+      const pa = p.attributes.position.array, na = p.attributes.normal.array, ua = p.attributes.uv.array;
+      for (let t = 0; t < p.attributes.position.count; t += 3) {
+        if (flat(pa, t * 3)) continue;
+        pos.set(pa.subarray(t * 3, t * 3 + 9), o * 3);
+        nor.set(na.subarray(t * 3, t * 3 + 9), o * 3);
+        uv.set(ua.subarray(t * 2, t * 2 + 6), o * 2);
+        o += 3;
+      }
     });
+    if (o < n) {
+      pos = pos.slice(0, o * 3);
+      nor = nor.slice(0, o * 3);
+      uv = uv.slice(0, o * 2);
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
@@ -83,5 +101,23 @@
     return dist;
   }
 
-  window.Geo = { part: part, merge: merge, mat: mat, prism: prism, placeGlow: placeGlow };
+  // A piece that never moves on whatever holds it: its place is worked out once, not every frame.
+  // (Only for things whose position, rotation and scale are never changed afterwards.)
+  function still(obj) {
+    obj.updateMatrix();
+    obj.matrixAutoUpdate = false;
+    return obj;
+  }
+
+  // While it's hidden, don't work out where it (and everything on it) is every frame.
+  // It's brought up to date in the first frame it shows again.
+  function skipWhileHidden(obj) {
+    const update = obj.updateMatrixWorld;
+    obj.updateMatrixWorld = function (force) {
+      if (this.visible) update.call(this, force);
+    };
+    return obj;
+  }
+
+  window.Geo = { part: part, merge: merge, mat: mat, prism: prism, placeGlow: placeGlow, still: still, skipWhileHidden: skipWhileHidden };
 })();

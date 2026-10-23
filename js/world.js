@@ -6,6 +6,8 @@
   const ROW_STEP = 2;         // a new row of trees every 2 meters
   const VIEW_AHEAD = 48;      // generate this far in front of the player
   const KEEP_BEHIND = 22;     // forget rows this far behind
+  const DRAW_AHEAD = 38;      // past this it's all fog (only far glows show through, from 34 m at most)
+  const DRAW_BEHIND = 8;      // looking ahead, nothing further back can reach into view (big crowns are 4 m wide)
   const PLAY_HALF_WIDTH = 11.5; // the player can move between -11.5 and +11.5
   const START_CLEAR = 30;     // no obstacles for the first meters
   const TREE_SIZE = 1.7;      // all trees are scaled up by this much
@@ -44,8 +46,10 @@
 
   // ---- geometry -------------------------------------------------------
 
+  // (the trunks are open tubes: the bottom is under the ground, the top inside the crown or facing
+  // straight up far above your eyes, so their ends could never be seen)
   function pineGeometry(A) {
-    const parts = [part(new THREE.CylinderGeometry(0.11, 0.25, 7, 6, 4), A.bark, mat(0, 3.5, 0))];
+    const parts = [part(new THREE.CylinderGeometry(0.11, 0.25, 7, 6, 4, true), A.bark, mat(0, 3.5, 0))];
     const tiers = [[1.7, 2.6, 3.0], [1.35, 2.3, 4.3], [0.95, 2.0, 5.6], [0.55, 1.7, 6.8]];
     tiers.forEach((t, i) => {
       parts.push(part(new THREE.ConeGeometry(t[0], t[1], 7, 1), A.leaves, mat(0, t[2], 0, 0, i * 0.7, 0)));
@@ -54,7 +58,7 @@
   }
 
   function deadTreeGeometry(A) {
-    const parts = [part(new THREE.CylinderGeometry(0.07, 0.22, 5, 5, 3), A.dead, mat(0, 2.5, 0))];
+    const parts = [part(new THREE.CylinderGeometry(0.07, 0.22, 5, 5, 3, true), A.dead, mat(0, 2.5, 0))];
     const branches = [
       [2.3, 0.0, 0.9, 1.6], [2.9, 2.1, 1.0, 1.4], [3.5, 4.0, 0.8, 1.3],
       [3.9, 1.0, 1.1, 1.0], [4.3, 3.2, 0.7, 0.9], [2.6, 5.2, 1.2, 1.2]
@@ -100,7 +104,7 @@
       const m = new THREE.InstancedMesh(geo, material, max);
       m.frustumCulled = false; // instances are spread out; culling by the base geometry would be wrong
       m.count = 0;
-      scene.add(m);
+      scene.add(Geo.skipWhileHidden(Geo.still(m)));
       return m;
     }
 
@@ -128,6 +132,7 @@
     let nextRowD = 0;
     let pathX = 0, pathV = 0;
     let dirty = true;
+    let lookingBack = true;  // (then the trees behind you are drawn too)
     // logs and abandoned places
     let nextLogD = 0, nextPlaceD = 0, lastPlace = '';
     let reserved = [];      // areas kept free for a place: {x0, x1, d0, d1, side}
@@ -343,27 +348,45 @@
 
     const dummy = new THREE.Object3D();
 
+    // Only what can be seen is drawn: nothing lost in the fog ahead, and nothing behind you unless you look.
+    // (The rows always reach VIEW_AHEAD past you, to within a row, so you're about at nextRowD - VIEW_AHEAD.)
     function rebuild() {
-      const counts = {};
-      Object.keys(kinds).forEach(name => { counts[name] = 0; });
+      const youD = nextRowD - VIEW_AHEAD;
+      const from = lookingBack ? -Infinity : youD - ROW_STEP - DRAW_BEHIND, to = youD + DRAW_AHEAD;
+      const names = Object.keys(kinds);
+      names.forEach(name => { kinds[name].mesh.count = 0; });
       for (let r = 0; r < rows.length; r++) {
+        if (rows[r].d < from || rows[r].d > to) continue;
         const items = rows[r].items;
         for (let i = 0; i < items.length; i++) {
           const it = items[i];
-          const k = kinds[it.kind];
-          if (counts[it.kind] >= k.mesh.instanceMatrix.count) continue;
-          dummy.position.set(it.x, 0, it.z);
-          dummy.rotation.set(0, it.ry, it.rz);
-          dummy.scale.set(it.sx || it.s, it.s, it.s);
-          dummy.updateMatrix();
-          k.mesh.setMatrixAt(counts[it.kind]++, dummy.matrix);
+          const m = kinds[it.kind].mesh;
+          if (m.count >= m.instanceMatrix.count) continue;
+          // (its place is worked out once, then kept)
+          if (!it.m) {
+            dummy.position.set(it.x, 0, it.z);
+            dummy.rotation.set(0, it.ry, it.rz);
+            dummy.scale.set(it.sx || it.s, it.s, it.s);
+            dummy.updateMatrix();
+            it.m = dummy.matrix.toArray(new Float32Array(16));
+          }
+          m.instanceMatrix.array.set(it.m, m.count * 16);
+          m.count++;
         }
       }
-      Object.keys(kinds).forEach(name => {
+      names.forEach(name => {
         const m = kinds[name].mesh;
-        m.count = counts[name];
+        // (only send the graphics card the part that's in use)
+        m.instanceMatrix.updateRange.count = m.count * 16;
         m.instanceMatrix.needsUpdate = true;
       });
+    }
+
+    // looking back (or anything but running ahead): draw the trees behind you as well
+    function setLookingBack(v) {
+      if (v === lookingBack) return;
+      lookingBack = v;
+      rebuild();
     }
 
     function update(playerD) {
@@ -480,6 +503,7 @@
     return {
       places: places,
       setVisible: setVisible,
+      setLookingBack: setLookingBack,
       reset: reset,
       update: update,
       collide: collide,
