@@ -77,7 +77,7 @@
     });
 
     // ---- lights: tail lights (they light up whatever is behind you) and the hazards ---
-    const tail = new THREE.PointLight(0xff1a0c, 0, 10, 1.4);
+    const tail = new THREE.PointLight(0xff2a14, 0, 15, 1.1);
     tail.position.set(0, 1.0, -3.3);
     car.add(tail);
     const hazardLight = new THREE.PointLight(0xff9030, 0, 7, 1.5);
@@ -92,8 +92,135 @@
     });
     hz.forEach(g => root.add(new THREE.Mesh(g, hazardMat)));
 
-    // keep the forearms attached to the hands as the wheel turns
-    function update() {
+
+    // ---- the rear-view mirror: a tiny camera looking back through the rear window ----
+    const EYE = new THREE.Vector3(0.42, 1.58, 0.1);
+    const mirrorRT = new THREE.WebGLRenderTarget(240, 75, { magFilter: THREE.NearestFilter, minFilter: THREE.LinearFilter });
+    const mirrorGeo = new THREE.PlaneGeometry(0.3, 0.094);
+    const muv = mirrorGeo.attributes.uv;
+    for (let i = 0; i < muv.count; i++) muv.setX(i, 1 - muv.getX(i)); // a mirror shows things the other way round
+    const mirror = new THREE.Mesh(mirrorGeo, new THREE.MeshBasicMaterial({ map: mirrorRT.texture, fog: false }));
+    const mirrorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.11, 0.03), finish.propsMat);
+    const mirrorRoot = new THREE.Group();
+    mirrorRoot.position.set(0.3, 1.72, 1.07); // a little towards you, so it's in view on a phone
+    root.add(mirrorRoot);
+    mirrorRoot.add(mirror, mirrorFrame);
+    mirror.position.z = 0.016;
+    car.updateMatrixWorld();
+    mirrorRoot.lookAt(car.localToWorld(EYE.clone())); // angled at your eyes
+    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.02), finish.propsMat);
+    stalk.position.set(0.3, 1.8, 1.09);
+    root.add(stalk);
+    // (it sits further back than the mirror, so the rear window fills it)
+    const mirrorCam = new THREE.PerspectiveCamera(20, 0.3 / 0.094, 0.1, 50);
+    mirrorCam.position.set(0.06, 1.64, 0.28);
+    mirrorCam.rotation.set(-0.06, 0, 0); // looking back (the truck's -z), a little down
+    car.add(mirrorCam);
+    let mirrorTick = 0;
+    function renderMirror(renderer, scene) {
+      // like the monster, the mirror only updates every other frame: choppy, old-school
+      mirrorTick = (mirrorTick + 1) % 2;
+      if (mirrorTick) return;
+      mirrorRoot.visible = false;
+      renderer.setRenderTarget(mirrorRT);
+      renderer.render(scene, mirrorCam);
+      renderer.setRenderTarget(null);
+      mirrorRoot.visible = true;
+    }
+
+    // ---- cracks in the windscreen ---------------------------------------------------
+    const cc = document.createElement('canvas');
+    cc.width = 256;
+    cc.height = 104;
+    const cx = cc.getContext('2d');
+    const crackTex = new THREE.CanvasTexture(cc);
+    crackTex.magFilter = THREE.NearestFilter;
+    crackTex.minFilter = THREE.LinearFilter;
+    crackTex.generateMipmaps = false;
+    const crackMat = new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const cracks = new THREE.Mesh(new THREE.PlaneGeometry(1.84, 0.74), crackMat);
+    cracks.position.set(0, 1.48, 1.236);
+    cracks.rotation.x = -0.25;
+    root.add(cracks);
+    // a jagged line from (x, y), splitting now and then
+    function crackLine(x, y, a, len, w) {
+      for (let i = 0; i < len; i++) {
+        cx.fillRect(Math.round(x), Math.round(y), w, 1);
+        a += (Math.random() - 0.5) * 0.7;
+        x += Math.cos(a);
+        y += Math.sin(a) * 0.8;
+        if (Math.random() < 0.06 && len > 6) crackLine(x, y, a + (Math.random() < 0.5 ? 0.9 : -0.9), len * 0.4, 1);
+      }
+    }
+    // a new crack somewhere on the glass (power 0..1: how big)
+    function crack(power) {
+      // keep the middle of your view mostly clear
+      const x = Math.random() < 0.5 ? 16 + Math.random() * 80 : 160 + Math.random() * 80;
+      const y = 10 + Math.random() * 84;
+      cx.fillStyle = 'rgba(160,172,184,0.45)';
+      const n = 4 + Math.floor(power * 3);
+      for (let i = 0; i < n; i++) crackLine(x, y, i / n * Math.PI * 2 + Math.random() * 0.5, 5 + power * 18 * Math.random(), 1);
+      // the pale spot where it hit
+      cx.fillStyle = 'rgba(190,198,206,0.5)';
+      cx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 2, 2);
+      crackTex.needsUpdate = true;
+    }
+
+    // ---- dents in the bonnet ------------------------------------------------------
+    const hood = finish.hood;
+    const hpos = hood.geometry.attributes.position, hcol = hood.geometry.attributes.color;
+    const rest = hood.userData.rest;
+    function dent(power) {
+      const px = (Math.random() * 2 - 1) * 0.75, pz = 0.6 - Math.random() * 0.9;
+      const r = 0.22 + power * 0.25, depth = 0.05 + power * 0.07;
+      for (let i = 0; i < hpos.count; i++) {
+        const x = hpos.getX(i), y = hpos.getY(i), z = hpos.getZ(i);
+        if (y < 0.05) continue;
+        const d = Math.hypot(x - px, z - pz) / r;
+        if (d >= 1) continue;
+        const k = 1 - d * d;
+        hpos.setY(i, y - depth * k);
+        // scraped, darker paint
+        const c = 1 - 0.45 * k;
+        hcol.setXYZ(i, hcol.getX(i) * c, hcol.getY(i) * c, hcol.getZ(i) * c);
+      }
+      // the front edge crumples a little
+      for (let i = 0; i < hpos.count; i++) {
+        const x = hpos.getX(i), z = hpos.getZ(i);
+        if (z > 0.55 && Math.abs(x - px) < 0.5) hpos.setZ(i, z - power * 0.05 * (1 - Math.abs(x - px) / 0.5));
+      }
+      hpos.needsUpdate = true;
+      hcol.needsUpdate = true;
+      hood.geometry.computeVertexNormals();
+    }
+
+    // ---- smoke (then steam) from under the bonnet when the engine is hurt -----------
+    const smokeMat = new THREE.SpriteMaterial({ map: tex.glow, color: 0x6a6a66, transparent: true, depthWrite: false, opacity: 0.35 });
+    const puffs = [];
+    for (let i = 0; i < 14; i++) {
+      const sp = new THREE.Sprite(smokeMat);
+      sp.visible = false;
+      sp.userData = { life: 0 };
+      root.add(sp);
+      puffs.push(sp);
+    }
+    let smoke = 0, smokeAcc = 0;
+
+    // fixing it all (a new run)
+    function repair() {
+      cx.clearRect(0, 0, cc.width, cc.height);
+      crackTex.needsUpdate = true;
+      hpos.array.set(rest);
+      for (let i = 0; i < hcol.count; i++) hcol.setXYZ(i, 1, 1, 1);
+      hpos.needsUpdate = true;
+      hcol.needsUpdate = true;
+      hood.geometry.computeVertexNormals();
+      smoke = 0;
+      puffs.forEach(p => { p.visible = false; p.userData.life = 0; });
+    }
+
+    // keep the forearms attached to the hands as the wheel turns; the smoke drifts back over the glass
+    function update(dt) {
       car.updateMatrixWorld();
       hands.forEach(h => {
         h.grip.getWorldPosition(tmp);
@@ -101,6 +228,26 @@
         h.arm.position.copy(tmp);
         h.arm.lookAt(car.localToWorld(h.elbow.clone()));
         h.arm.scale.z = tmp.distanceTo(h.elbow);
+      });
+      if (!dt) return;
+      smokeAcc += dt;
+      if (smokeAcc < 1 / 12) return; // choppy, like everything else that moves
+      const step = smokeAcc;
+      smokeAcc = 0;
+      puffs.forEach(p => {
+        const u = p.userData;
+        if (u.life > 0) {
+          u.life -= step;
+          p.position.y += step * 0.9;
+          p.position.z -= step * 2.6;
+          p.scale.multiplyScalar(1 + step * 1.6);
+          p.visible = u.life > 0 && p.position.z > 0.9;
+        } else if (Math.random() < smoke * step * 5) {
+          u.life = 0.5 + Math.random() * 0.5;
+          p.position.set((Math.random() - 0.5) * 1.2, 1.15, 2.2 + Math.random() * 0.4);
+          p.scale.setScalar(0.25 + Math.random() * 0.2);
+          p.visible = true;
+        }
       });
     }
 
@@ -112,6 +259,16 @@
         onWheel.visible = v;
       },
       tail: tail,
+      renderMirror: renderMirror,
+      crack: crack,
+      dent: dent,
+      repair: repair,
+      // 0: none, 1: thick smoke pouring out
+      setSmoke: function (v) {
+        smoke = v;
+        smokeMat.color.setScalar(0.42 - v * 0.2);
+        smokeMat.opacity = 0.25 + v * 0.25;
+      },
       // speed and temperature 0..1, glow: how bright the dials are (they flicker with the lights)
       setGauges: function (speed, temp, glow) {
         needles[0].rotation.z = 2.36 - Math.min(1, speed) * 4.71;

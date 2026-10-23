@@ -127,6 +127,23 @@
         arms.forEach(a => { a.a.rotation.set(-1.35 + jit(0.25), 0, a.side * 0.12); a.elbow.rotation.x = -0.1 + jit(0.2); });
         neck.rotation.x = -0.5;
         head.rotation.z = tilt * 0.5 + twitch;
+      } else if (mode === 'crawl') {
+        // on all fours down the road, galloping, the long arms as front legs
+        const p = t * 11;
+        hips.position.y = 0.9 + Math.abs(Math.sin(p)) * 0.14;
+        torso.rotation.x = 1.25 + jit(0.12);
+        legs.forEach((l, i) => {
+          const s = Math.sin(p + i * 0.7);
+          l.leg.rotation.x = -0.65 + s * 0.6;
+          l.knee.rotation.x = 1.35 + Math.max(0, -s) * 0.5;
+        });
+        arms.forEach((a, i) => {
+          const s = Math.sin(p + Math.PI + i * 0.6);
+          a.a.rotation.set(-1.5 + s * 0.75, 0, a.side * 0.18);
+          a.elbow.rotation.x = -0.25 + jit(0.25);
+        });
+        neck.rotation.x = -1.15 + jit(0.15);
+        head.rotation.z = tilt * 0.5 + twitch;
       } else if (mode === 'lunge') {
         // bent down to your face, arms spread wide
         legs.forEach(l => { l.leg.rotation.x = -0.9; l.knee.rotation.x = 1.6; });
@@ -144,6 +161,10 @@
         acc = 1;
         twitch = 0;
       },
+      // the same, but only if it's doing something else now (safe to call every frame)
+      setModeOnce: function (m) {
+        if (m !== mode) this.setMode(m);
+      },
       // move to (x, z) and face the point (tx, tz). eyeBoost: make the eyes stand out even more
       place: function (x, y, z, tx, tz, eyeBoost) {
         root.position.set(x, y, z);
@@ -156,8 +177,8 @@
       update: function (dt) {
         t += dt;
         acc += dt;
-        // stop-motion: only a few new poses per second (faster when it lunges)
-        if (acc >= (mode === 'lunge' ? 1 / 24 : 1 / 9)) {
+        // stop-motion: only a few new poses per second (faster when it lunges or gallops)
+        if (acc >= (mode === 'lunge' ? 1 / 24 : mode === 'crawl' ? 1 / 12 : 1 / 9)) {
           acc = 0;
           applyPose();
         }

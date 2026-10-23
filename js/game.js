@@ -161,6 +161,8 @@
   let bestEndless = 0;
   try { bestEndless = parseInt(localStorage.getItem('behindyou.bestEndless') || '0', 10) || 0; } catch (e) { /* ignore */ }
   let endlessUnlocked = flag('escaped');
+  let best2 = 0;
+  try { best2 = parseInt(localStorage.getItem('behindyou.best2') || '0', 10) || 0; } catch (e) { /* ignore */ }
 
   // has the player ever jumped over a log? (until then, a hint shows when one is coming)
   let learnedJump = false;
@@ -525,6 +527,11 @@
 
   // After you've been caught: straight back on your feet and running, no camp scene.
   function runAgain() {
+    if (level === 2) {
+      placeStickIdle();
+      drive.startPlay();
+      return;
+    }
     resetRun(mode);
     seat = 0;
     lightOn = true;
@@ -538,6 +545,7 @@
 
   // Back to sitting by the fire.
   function toMenu() {
+    if (level === 2) useLevel(1);
     resetRun('level');
     setState('menu');
     Sfx.stopBreathing();
@@ -804,9 +812,16 @@
     releaseSprint();
   }
 
-  function finishCaught() {
-    const dist = runDistance();
-    if (mode === 'endless') {
+  function finishCaught(driven) {
+    const dist = level === 2 ? driven : runDistance();
+    if (level === 2) {
+      if (dist > best2) {
+        best2 = dist;
+        try { localStorage.setItem('behindyou.best2', String(dist)); } catch (e) { /* ignore */ }
+      }
+      ui.result.textContent = 'You drove ' + dist + ' of ' + Highway.LENGTH + ' meters.';
+      ui.best.textContent = 'Furthest: ' + best2 + ' m';
+    } else if (mode === 'endless') {
       if (dist > bestEndless) {
         bestEndless = dist;
         try { localStorage.setItem('behindyou.bestEndless', String(dist)); } catch (e) { /* ignore */ }
@@ -1188,10 +1203,17 @@
   }
 
   // ---- Level 2: The Highway ----------------------------------------------------------
+  // it, on all fours this time: it lives on the highway, behind your truck
+  const crawler = Monster.create(scene, tex);
+  hw.root.add(crawler.root);
   const drive = Drive.create({
-    finish: finish, cab: cab, hw: hw, body: body, camera: camera, ui: ui,
+    finish: finish, cab: cab, hw: hw, body: body, camera: camera, ui: ui, chaser: crawler,
+    renderer: renderer, scene: scene, canvas: canvas,
     keys: keys, stick: stick, sprintBtn: sprintBtn,
-    setState: setState, state: () => state, stateTime: () => stateTime
+    setState: setState, state: () => state, stateTime: () => stateTime, baseFov: () => baseFov2,
+    drawStatic: drawStatic,
+    releaseInput: () => { stick.id = null; stick.x = stick.y = 0; releaseSprint(); },
+    onCaught: dist => finishCaught(dist)
   });
 
   // Which level's world is out there. The highway starts where your truck was parked,
@@ -1322,6 +1344,7 @@
     blackout: () => { blackoutTimer = 0; }, watcher: () => { watcherTimer = 0; player.d = Math.max(player.d, 260); },
     player: player, getGap: () => gap, getState: () => state, input: input, stick: stick,
     jump: requestJump, escape: () => { player.d = 1990; player.x = 1; },
-    level2: () => { useLevel(2); drive.startPlay(); }, drive: drive, hw: hw,
+    level2: () => { useLevel(2); drive.startPlay(); }, drive: drive, hw: hw, cab: cab,
+    freeze: v => { paused = v; },
     endless: () => startEndless(), state: () => state, carT: () => carT, places: () => world.places(), logAhead: () => world.logAhead(player.d), introT: () => introT };
 })();

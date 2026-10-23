@@ -412,6 +412,19 @@
       src.stop(t + 6.2);
       tone(58, 52, 5, 0.06, 'sawtooth', 0.5);
     },
+    // it slams into the truck: a heavy bang, bent metal, rattling glass (pan: -1 left .. 1 right)
+    crunch: function (pan) {
+      tone(80, 32, 0.5, 0.9, 'triangle');
+      noise(0.45, 'lowpass', 900, 1, 0.9, pan);
+      noise(0.3, 'bandpass', 1400, 3, 0.35, pan, 0.02);
+      tone(340, 210, 0.35, 0.08, 'square', 0.03);
+      tone(510, 330, 0.3, 0.05, 'square', 0.06);
+      noise(0.25, 'highpass', 5000, 1, 0.12, pan, 0.1);
+    },
+    // branches scraping down the side of the truck
+    scrape: function () {
+      for (let i = 0; i < 5; i++) noise(0.07, 'bandpass', 1800 + Math.random() * 1600, 2, 0.12, 0, i * 0.06 + Math.random() * 0.03);
+    },
     heartbeat: function (vol) {
       tone(55, 40, 0.12, vol);
       tone(50, 36, 0.14, vol * 0.75, 'sine', 0.16);
