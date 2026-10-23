@@ -21,13 +21,18 @@
 <!-- HUD -->
 <div id="hud" class="hidden">
   <div id="distance">0 m</div>
-  <div id="stamina"><div id="staminaFill"></div></div>
 </div>
 
 <div id="hint" class="hidden"></div>
 
 <!-- joystick -->
 <div id="stick" class="hidden"><div id="knob"></div></div>
+
+<!-- sprint button: hold to sprint, the ring is your stamina -->
+<div id="sprint" class="hidden">
+  <svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44"/><circle id="sprintRing" cx="50" cy="50" r="44"/></svg>
+  <span>RUN</span>
+</div>
 
 <!-- menus -->
 <div id="menu" class="overlay camp">
@@ -36,7 +41,7 @@
     <p class="sub">Something is following you.<br>Don't stop. Don't look back.</p>
   </div>
   <div>
-    <p class="help">Drag anywhere with one thumb<br>&larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; sprint &nbsp;&middot;&nbsp; &darr; slow down<br>quick flick up: jump</p>
+    <p class="help">Drag with your thumb: &larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; jump &nbsp;&middot;&nbsp; &darr; slow down<br>Hold RUN with your other thumb to sprint</p>
     <p class="help small">Headphones recommended</p>
     <p class="blink">TAP TO RUN</p>
     <p id="bestMenu" class="small"></p>

@@ -63,18 +63,38 @@ html, body {
   font-weight: bold;
   letter-spacing: 2px;
 }
-#stamina {
-  margin-top: 6px;
-  width: 120px;
-  height: 6px;
-  border: 1px solid rgba(216,210,192,0.5);
-  background: rgba(0,0,0,0.5);
+/* Sprint button, bottom right. The ring around it is your stamina. */
+#sprint {
+  position: fixed;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(34px, env(safe-area-inset-bottom));
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: rgba(216,210,192,0.7);
+  text-shadow: 2px 2px 0 #000;
 }
-#staminaFill {
-  height: 100%;
+#sprint svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  background: #c8b878;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
 }
+#sprint circle { fill: none; stroke-width: 6; }
+#sprint .track { stroke: rgba(216,210,192,0.18); }
+#sprintRing { stroke: #c8b878; stroke-dasharray: 276.5; stroke-dashoffset: 0; }
+#sprint span { pointer-events: none; }
+#sprint.on { background: rgba(200,184,120,0.25); color: #e8e0c8; }
+#sprint.low #sprintRing { stroke: #a04030; }
 
 #stick {
   position: fixed;

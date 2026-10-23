@@ -9,12 +9,12 @@ You start sitting by your campfire. Tap, and something moves out there in the da
 
 Open `index.html` in any browser (phone or computer). No install is needed.
 
-- **Phone:** put your thumb anywhere on the screen and drag.
+- **Phone:** put your thumb anywhere on the screen and drag (the joystick).
   - left / right: steer
-  - up: sprint (uses stamina, shown by the bar under the distance)
-  - down: slow down
-  - a quick flick upwards: jump
-- **Computer:** arrow keys or WASD, Space to jump.
+  - push up: jump
+  - pull down: slow down
+  - hold the **RUN** button (bottom right) with your other thumb to sprint. The ring around it is your stamina.
+- **Computer:** arrow keys or WASD, Space or up to jump, Shift to sprint.
 
 Hitting a tree makes you stumble and lets it get closer. Listen to your heartbeat and breathing.
 When the screen edges turn red, the view narrows and the flashlight starts flickering, it's right behind you.

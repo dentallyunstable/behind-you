@@ -11,14 +11,14 @@
   const MAX_GAP = 32;
   const LOOK_PENALTY = 1.5;     // it closes in this much faster (m/s) while you look back
   const STICK_RADIUS = 55;      // pixels
-  const FLICK_PX = 36;          // a quick flick up this far (in ~0.15 s) is a jump
+  const SPRINT_RING = 276.5;    // length of the stamina ring around the sprint button (2 * PI * 44)
   const JUMP_SPEED = 4.4;
   const GRAVITY = 14;
   const SIT_EYE = 0.95;         // eye height sitting by the fire
 
   const $ = id => document.getElementById(id);
   const ui = {
-    hud: $('hud'), distance: $('distance'), staminaFill: $('staminaFill'),
+    hud: $('hud'), distance: $('distance'), sprint: $('sprint'), sprintRing: $('sprintRing'),
     stick: $('stick'), knob: $('knob'), menu: $('menu'), over: $('over'),
     result: $('result'), best: $('best'), bestMenu: $('bestMenu'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
@@ -136,19 +136,21 @@
   let learnedJump = false;
   try { learnedJump = localStorage.getItem('behindyou.jumped') === '1'; } catch (e) { /* ignore */ }
   const touchScreen = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-  ui.hint.textContent = touchScreen ? 'FLICK UP TO JUMP' : 'SPACE TO JUMP';
+  ui.hint.textContent = touchScreen ? 'PUSH UP TO JUMP' : 'SPACE TO JUMP';
 
-  // ---- input: one floating joystick (+ keyboard on computers) ----------------
-  const input = { x: 0, y: 0 };
-  const stick = { id: null, ox: 0, oy: 0, x: 0, y: 0, hist: [] };
-  let jumpBuffer = 0;
+  // ---- input: a floating joystick and a sprint button (+ keyboard on computers) --
+  // joystick: left/right steer, push up to jump, pull down to slow down
+  const input = { x: 0, y: 0, sprint: false };
+  const stick = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  const sprintBtn = { id: null };
+  let jumpBuffer = 0, jumpArmed = true;
   function requestJump() {
     if (state === 'play') jumpBuffer = 0.18;
   }
   const keys = {};
 
   function placeStickIdle() {
-    ui.stick.style.left = '50%';
+    ui.stick.style.left = '35%';
     ui.stick.style.top = 'auto';
     ui.stick.style.bottom = 'calc(14% - 60px)';
     ui.stick.style.opacity = '0.5';
@@ -161,13 +163,20 @@
     if (state === 'menu' || (state === 'over' && stateTime > 0.8)) {
       startIntro();
     }
-    // the thumb can already rest on the screen while you get up from the fire
-    if ((state !== 'play' && state !== 'intro') || stick.id !== null) return;
+    // thumbs can already rest on the screen while you get up from the fire
+    if (state !== 'play' && state !== 'intro') return;
+    if (e.target.closest && e.target.closest('#sprint')) {
+      if (sprintBtn.id === null) {
+        sprintBtn.id = e.pointerId;
+        ui.sprint.classList.add('on');
+      }
+      return;
+    }
+    if (stick.id !== null) return;
     stick.id = e.pointerId;
     stick.ox = e.clientX;
     stick.oy = e.clientY;
     stick.x = stick.y = 0;
-    stick.hist = [{ t: performance.now(), y: e.clientY }];
     ui.stick.style.left = e.clientX + 'px';
     ui.stick.style.top = e.clientY + 'px';
     ui.stick.style.bottom = 'auto';
@@ -181,19 +190,13 @@
     ui.knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
     stick.x = dx / STICK_RADIUS;
     stick.y = -dy / STICK_RADIUS;
-    // a quick flick upwards: jump
-    const t = performance.now();
-    stick.hist.push({ t: t, y: e.clientY });
-    // keep one sample from before the window: where the thumb was resting when the flick began
-    while (stick.hist.length > 2 && t - stick.hist[1].t > 160) stick.hist.shift();
-    let lowest = e.clientY;
-    for (let i = 0; i < stick.hist.length; i++) lowest = Math.max(lowest, stick.hist[i].y);
-    if (lowest - e.clientY > FLICK_PX) {
-      requestJump();
-      stick.hist = [{ t: t, y: e.clientY }];
-    }
+  }
+  function releaseSprint() {
+    sprintBtn.id = null;
+    ui.sprint.classList.remove('on');
   }
   function onUp(e) {
+    if (e.pointerId === sprintBtn.id) releaseSprint();
     if (e.pointerId !== stick.id) return;
     stick.id = null;
     stick.x = stick.y = 0;
@@ -228,6 +231,14 @@
     if (Math.abs(y) < 0.12) y = 0;
     input.x = Math.max(-1, Math.min(1, x));
     input.y = Math.max(-1, Math.min(1, y));
+    input.sprint = sprintBtn.id !== null || !!keys.ShiftLeft || !!keys.ShiftRight;
+    // pushing up jumps once; come back down before the next jump
+    if (input.y > 0.6 && jumpArmed) {
+      requestJump();
+      jumpArmed = false;
+    } else if (input.y < 0.3) {
+      jumpArmed = true;
+    }
   }
 
   // ---- game state ------------------------------------------------------------
@@ -262,11 +273,12 @@
     ui.over.classList.toggle('hidden', s !== 'over');
     ui.hud.classList.toggle('hidden', s !== 'play');
     ui.stick.classList.toggle('hidden', s !== 'play');
+    ui.sprint.classList.toggle('hidden', s !== 'play' && s !== 'intro');
   }
 
   function resetRun() {
     player.x = 0; player.d = 0; player.y = 0; player.vx = 0; player.vy = 0; player.speed = 0;
-    jumpBuffer = 0;
+    jumpBuffer = 0; jumpArmed = true;
     seat = 1; lightOn = false; vmRaise = 1; introT = -1;
     viewmodel.visible = false;
     ui.hint.classList.add('hidden');
@@ -359,6 +371,7 @@
     Sfx.stopBreathing();
     Sfx.setAmbience(0);
     stick.id = null; stick.x = stick.y = 0;
+    releaseSprint();
   }
 
   function finishCaught() {
@@ -393,7 +406,7 @@
     const diff = world.difficulty(player.d);
     const base = 6 + diff * 2.6;
     let want = base;
-    const sprinting = input.y > 0.35 && player.stamina > 0.02;
+    const sprinting = input.sprint && player.stamina > 0.02;
     if (sprinting) {
       want = base * 1.4;
       player.stamina = Math.max(0, player.stamina - 0.3 * dt);
@@ -589,8 +602,9 @@
 
     // HUD
     ui.distance.textContent = Math.max(0, Math.floor(player.d)) + ' m';
-    ui.staminaFill.style.width = (player.stamina * 100).toFixed(1) + '%';
-    ui.staminaFill.style.background = player.stamina < 0.25 ? '#a04030' : '#c8b878';
+    // stamina: the ring around the sprint button
+    ui.sprintRing.style.strokeDashoffset = (SPRINT_RING * (1 - player.stamina)).toFixed(1);
+    ui.sprint.classList.toggle('low', player.stamina < 0.25);
   }
 
   function startLook(dur, turn, show, isCloseCall) {
@@ -765,6 +779,7 @@
     paused = document.hidden;
     if (paused) {
       stick.id = null; stick.x = stick.y = 0;
+      releaseSprint();
       for (const k in keys) keys[k] = false;
     }
   });
