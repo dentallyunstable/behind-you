@@ -270,6 +270,21 @@ canvas.art {
   text-shadow: 2px 2px 0 #000;
 }
 .level-label b { color: #f0e4c0; }
+/* how to unlock the next level, on a dark band along the card's bottom */
+.unlock-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-align: center;
+  color: #c8c2b0;
+  background: rgba(0,0,0,0.8);
+  text-shadow: 1px 1px 0 #000;
+}
+
 .mini {
   position: absolute;
   right: 8px;

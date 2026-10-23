@@ -27,7 +27,7 @@
     settings: $('settings'), settingsBtn: $('settingsBtn'), settingsClose: $('settingsClose'),
     againBtn: $('againBtn'), menuBtn: $('menuBtn'), fade: $('fade'), toast: $('toast'),
     levels: $('levels'), levelsBtn: $('levelsBtn'), levelsClose: $('levelsClose'),
-    lvlForest: $('lvlForest'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
+    lvlForest: $('lvlForest'), unlockNote: $('unlockNote'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
     escaped: $('escaped'), nextBtn: $('nextBtn'), comingSoon: $('comingSoon'),
     endlessBtn: $('endlessBtn'), escMenuBtn: $('escMenuBtn'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
@@ -274,6 +274,8 @@
     if (!open) return;
     if (!shotTaken) { snapshotCamp(ui.forestShot); shotTaken = true; }
     ui.lvlEndless.classList.toggle('locked', !endlessUnlocked);
+    // the next level: tell the player how to unlock it (once they have, it just isn't made yet)
+    ui.unlockNote.textContent = endlessUnlocked ? 'Coming soon' : 'Reach 2000 m in The Forest to unlock';
   }
   ui.levelsBtn.addEventListener('click', () => { if (state === 'menu') showLevels(true); });
   ui.levelsClose.addEventListener('click', () => showLevels(false));
