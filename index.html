@@ -24,17 +24,23 @@
   <div id="stamina"><div id="staminaFill"></div></div>
 </div>
 
+<div id="hint" class="hidden"></div>
+
 <!-- joystick -->
 <div id="stick" class="hidden"><div id="knob"></div></div>
 
 <!-- menus -->
-<div id="menu" class="overlay">
-  <h1>BEHIND YOU</h1>
-  <p class="sub">Something is following you.<br>Don't stop. Don't look back.</p>
-  <p class="help">Drag anywhere with one thumb<br>&larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; sprint &nbsp;&middot;&nbsp; &darr; slow down</p>
-  <p class="help small">Headphones recommended</p>
-  <p class="blink">TAP TO RUN</p>
-  <p id="bestMenu" class="small"></p>
+<div id="menu" class="overlay camp">
+  <div>
+    <h1>BEHIND YOU</h1>
+    <p class="sub">Something is following you.<br>Don't stop. Don't look back.</p>
+  </div>
+  <div>
+    <p class="help">Drag anywhere with one thumb<br>&larr; &rarr; steer &nbsp;&middot;&nbsp; &uarr; sprint &nbsp;&middot;&nbsp; &darr; slow down<br>quick flick up: jump</p>
+    <p class="help small">Headphones recommended</p>
+    <p class="blink">TAP TO RUN</p>
+    <p id="bestMenu" class="small"></p>
+  </div>
 </div>
 
 <div id="over" class="overlay solid hidden">
@@ -48,7 +54,10 @@
 <script src="js/textures.js"></script>
 <script src="js/breathing-data.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/props.js"></script>
 <script src="js/world.js"></script>
+<script src="js/camp.js"></script>
 <script src="js/monster.js"></script>
 <script src="js/game.js"></script>
 </body>

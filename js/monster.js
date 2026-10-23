@@ -144,13 +144,13 @@
         acc = 1;
         twitch = 0;
       },
-      // move to (x, z) and face the point (tx, tz)
-      place: function (x, y, z, tx, tz) {
+      // move to (x, z) and face the point (tx, tz). eyeBoost: make the eyes stand out even more
+      place: function (x, y, z, tx, tz, eyeBoost) {
         root.position.set(x, y, z);
         root.rotation.y = Math.atan2(tx - x, tz - z);
         // far away the body is lost in the dark; keep the eyes big enough to still be seen
         const dist = Math.hypot(tx - x, tz - z);
-        const s = Math.max(1, (dist - 8) / 2.5);
+        const s = Math.max(1, (dist - 8) / 2.5) * (eyeBoost || 1);
         eyes.scale.set(s, s, 1);
       },
       update: function (dt) {

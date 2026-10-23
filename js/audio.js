@@ -9,6 +9,7 @@
   let ambience = 0;
   let breathBuf = null, breathSrc = null, breathGain = null;
   let chirpBufs = [];
+  let fireGain = null, fireLevel = 0;
 
   function init() {
     if (ctx) {
@@ -43,6 +44,20 @@
     far.frequency.value = 4500;
     cricketGain.connect(far);
     far.connect(master);
+
+    // The campfire: a soft, low roar that loops. Crackles are played on top (Sfx.crackle).
+    fireGain = ctx.createGain();
+    fireGain.gain.value = 0;
+    const roar = ctx.createBufferSource();
+    roar.buffer = noiseBuf;
+    roar.loop = true;
+    const roarF = ctx.createBiquadFilter();
+    roarF.type = 'lowpass';
+    roarF.frequency.value = 380;
+    roar.connect(roarF);
+    roarF.connect(fireGain);
+    fireGain.connect(master);
+    roar.start();
 
     // Breathing recording (embedded in js/breathing-data.js so it also works from a local file)
     breathGain = ctx.createGain();
@@ -180,6 +195,41 @@
         g.connect(cricketGain);
       }
       src.start();
+    },
+    // the campfire's volume (0..1)
+    setFire: function (v) {
+      if (!fireGain || Math.abs(v - fireLevel) < 0.01) return;
+      fireLevel = v;
+      fireGain.gain.setTargetAtTime(v * 0.12, now(), 0.3);
+    },
+    // one pop of the fire
+    crackle: function () {
+      if (fireLevel < 0.02) return;
+      const v = fireLevel * (0.05 + Math.random() * 0.12);
+      noise(0.02 + Math.random() * 0.03, 'highpass', 1500 + Math.random() * 2500, 0.7, v, (Math.random() - 0.5) * 0.3);
+      if (Math.random() < 0.3) noise(0.015, 'bandpass', 3000, 1, v * 0.8, 0, 0.03 + Math.random() * 0.05);
+    },
+    // a branch snapping somewhere in the dark (pan: -1 left .. 1 right)
+    snap: function (pan) {
+      noise(0.05, 'bandpass', 2200, 1.5, 0.55, pan);
+      noise(0.03, 'bandpass', 3400, 2, 0.35, pan, 0.045);
+      noise(0.08, 'bandpass', 1500, 1.2, 0.4, pan, 0.08);
+      noise(0.2, 'lowpass', 300, 1, 0.25, pan, 0.02);
+      // ...and leaves rustling as something shifts its weight
+      noise(0.5, 'bandpass', 2400, 0.6, 0.06, pan, 0.25);
+    },
+    // the flashlight switch
+    click: function () {
+      noise(0.012, 'bandpass', 4200, 3, 0.35);
+      noise(0.015, 'bandpass', 2600, 3, 0.25, 0, 0.07);
+    },
+    // pushing off for a jump, and landing on leaves
+    jump: function () {
+      noise(0.12, 'bandpass', 700, 1, 0.12);
+    },
+    land: function () {
+      noise(0.14, 'bandpass', 1100, 0.8, 0.22);
+      noise(0.12, 'lowpass', 180, 1, 0.3);
     },
     heartbeat: function (vol) {
       tone(55, 40, 0.12, vol);

@@ -9,47 +9,29 @@
   const PLAY_HALF_WIDTH = 11.5; // the player can move between -11.5 and +11.5
   const START_CLEAR = 30;     // no obstacles for the first meters
   const TREE_SIZE = 1.7;      // all trees are scaled up by this much
+  const LOG_HALF = 4;         // the log model is 8 m long
+  const LOG_RADIUS = 0.3;
+  const LOG_CLEAR = 0.3;      // you have to be this high in the air to get over a log
 
-  // ---- geometry helpers -------------------------------------------------
+  // The camp you start at, behind the start line. Distances are along the run (d), so it's at z = -d.
+  const CAMP = {
+    fireD: -2.2,
+    // where it can stand watching you, between the trees past the fire
+    eyes: [{ x: -1.3, d: -13 }, { x: 5, d: -12 }]
+  };
 
-  // Bake a primitive into a part: transform it and squeeze its UVs into an atlas rect.
-  function part(geo, rect, m) {
-    const g = geo.index ? geo.toNonIndexed() : geo;
-    if (m) g.applyMatrix4(m);
-    const uv = g.attributes.uv;
-    for (let i = 0; i < uv.count; i++) {
-      uv.setXY(i, rect[0] + uv.getX(i) * (rect[2] - rect[0]), rect[1] + uv.getY(i) * (rect[3] - rect[1]));
-    }
-    return g;
-  }
+  // The abandoned places. w/d: size of the footprint (local x/z), facing: turn it to face the path.
+  const PLACES = {
+    cabin: { w: 4.6, d: 3.9, facing: true },
+    tent: { w: 2.4, d: 2.8, facing: true },
+    car: { w: 2.0, d: 4.4, facing: false },
+    fence: { w: 0.3, d: 7.0, facing: false }
+  };
+  const PLACE_NAMES = Object.keys(PLACES);
 
-  function merge(parts) {
-    let n = 0;
-    parts.forEach(p => { n += p.attributes.position.count; });
-    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
-    let o = 0;
-    parts.forEach(p => {
-      pos.set(p.attributes.position.array, o * 3);
-      nor.set(p.attributes.normal.array, o * 3);
-      uv.set(p.attributes.uv.array, o * 2);
-      o += p.attributes.position.count;
-    });
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    return g;
-  }
+  const part = Geo.part, merge = Geo.merge, mat = Geo.mat;
 
-  function mat(tx, ty, tz, rx, ry, rz, sx, sy, sz) {
-    const m = new THREE.Matrix4();
-    m.compose(
-      new THREE.Vector3(tx, ty, tz),
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0)),
-      new THREE.Vector3(sx || 1, sy || 1, sz || 1)
-    );
-    return m;
-  }
+  // ---- geometry -------------------------------------------------------
 
   function pineGeometry(A) {
     const parts = [part(new THREE.CylinderGeometry(0.11, 0.25, 7, 6, 4), A.bark, mat(0, 3.5, 0))];
@@ -88,11 +70,19 @@
     return merge([part(a, full), part(b, full)]);
   }
 
+  // distance from point (px, pd) to the segment (ax, ad)-(bx, bd)
+  function distToSegment(px, pd, ax, ad, bx, bd) {
+    const vx = bx - ax, vd = bd - ad;
+    const t = Math.max(0, Math.min(1, ((px - ax) * vx + (pd - ad) * vd) / (vx * vx + vd * vd)));
+    return Math.hypot(px - (ax + vx * t), pd - (ad + vd * t));
+  }
+
   // ---- the world --------------------------------------------------------
 
   function create(scene, tex) {
-    const A = Textures.ATLAS;
+    const A = Textures.ATLAS, P = Textures.PROPS;
     const treeMat = new THREE.MeshLambertMaterial({ map: tex.atlas });
+    const propsMat = new THREE.MeshLambertMaterial({ map: tex.props });
     const bushMat = new THREE.MeshLambertMaterial({ map: tex.bush, alphaTest: 0.5, side: THREE.DoubleSide });
 
     function inst(geo, material, max) {
@@ -104,10 +94,15 @@
     }
 
     const kinds = {
-      pine: { mesh: inst(pineGeometry(A), treeMat, 700), radius: 0.25 },
-      dead: { mesh: inst(deadTreeGeometry(A), treeMat, 300), radius: 0.22 },
+      pine: { mesh: inst(pineGeometry(A), treeMat, 900), radius: 0.25 },
+      dead: { mesh: inst(deadTreeGeometry(A), treeMat, 400), radius: 0.22 },
       rock: { mesh: inst(rockGeometry(A), treeMat, 200), radius: 0 },
-      bush: { mesh: inst(bushGeometry(), bushMat, 400), radius: 0 }
+      bush: { mesh: inst(bushGeometry(), bushMat, 500), radius: 0 },
+      log: { mesh: inst(Props.log(A), treeMat, 8), radius: 0 },
+      cabin: { mesh: inst(Props.cabin(P), propsMat, 3), radius: 0 },
+      tent: { mesh: inst(Props.tent(P, true), propsMat, 3), radius: 0 },
+      car: { mesh: inst(Props.car(P), propsMat, 3), radius: 0 },
+      fence: { mesh: inst(Props.fence(P), propsMat, 3), radius: 0 }
     };
 
     // Ground: one subdivided plane that follows the player (snapped to the texture tile so it looks fixed).
@@ -122,6 +117,10 @@
     let nextRowD = 0;
     let pathX = 0, pathV = 0;
     let dirty = true;
+    // logs and abandoned places
+    let nextLogD = 0, nextPlaceD = 0, lastPlace = '';
+    let reserved = [];      // areas kept free for a place: {x0, x1, d0, d1, side}
+    let pending = [];       // places waiting to be added to the row at their far end
 
     function reset() {
       rows = [];
@@ -129,6 +128,11 @@
       pathX = 0;
       pathV = 0;
       dirty = true;
+      nextLogD = 110 + Math.random() * 40;
+      nextPlaceD = 170 + Math.random() * 60;
+      lastPlace = '';
+      reserved = [];
+      pending = [];
     }
 
     // 0 at the start, 1 when the forest is as dense as it gets
@@ -137,9 +141,45 @@
       return t * (2 - t);
     }
 
+    function isReserved(x, d, r) {
+      for (let i = 0; i < reserved.length; i++) {
+        const z = reserved[i];
+        if (x + r > z.x0 && x - r < z.x1 && d + r > z.d0 && d - r < z.d1) return true;
+      }
+      return false;
+    }
+
+    // Plan an abandoned place next to the path, starting just ahead of row d.
+    function planPlace(d, gapHalf) {
+      let name;
+      do { name = PLACE_NAMES[Math.floor(Math.random() * PLACE_NAMES.length)]; } while (name === lastPlace);
+      lastPlace = name;
+      const def = PLACES[name];
+      const side = pathX > 0 ? -1 : 1; // the side with more room
+      let ry;
+      if (def.facing) ry = -side * Math.PI / 2;          // its front looks at the path
+      else ry = (Math.random() < 0.5 ? 0 : Math.PI) + (name === 'car' ? (Math.random() - 0.5) * 0.3 : 0);
+      const turned = def.facing;
+      const hw = (turned ? def.d : def.w) / 2, hd = (turned ? def.w : def.d) / 2;
+      const inner = pathX + side * (gapHalf + 1.2);
+      const x = inner + side * (hw + Math.random() * 1.5);
+      const dc = d + 1 + hd;
+      const zone = { x0: x - hw - 0.5, x1: x + hw + 0.5, d0: d + 0.5, d1: dc + hd + 0.5, side: side };
+      reserved.push(zone);
+      pending.push({
+        atD: zone.d1,
+        item: {
+          kind: name, x: x, z: -dc, s: 1, ry: ry, rz: name === 'car' ? 0.06 : 0, r: 0,
+          // collision box (an old car is a bit smaller than its footprint so you don't snag on air)
+          box: { hw: hw - (name === 'fence' ? 0 : 0.1), hd: hd - 0.1 }
+        }
+      });
+    }
+
     function genRow(d) {
       const items = [];
       const diff = difficulty(d);
+      const gapHalf = 3.6 - diff * 2.0; // never narrower than 3.2m total
 
       // The guaranteed open path wanders smoothly left and right.
       pathV += (Math.random() - 0.5) * 0.35;
@@ -147,7 +187,13 @@
       pathX += pathV;
       if (pathX > 8) { pathX = 8; pathV = -Math.abs(pathV); }
       if (pathX < -8) { pathX = -8; pathV = Math.abs(pathV); }
-      const gapHalf = 3.6 - diff * 2.0; // never narrower than 3.2m total
+      // ...and steers clear of any abandoned place next to it
+      reserved = reserved.filter(z => z.d1 > d - 4);
+      reserved.forEach(z => {
+        if (d < z.d0 - 4) return;
+        if (z.side > 0 && pathX > z.x0 - gapHalf - 0.6) { pathX = z.x0 - gapHalf - 0.6; pathV = -Math.abs(pathV) * 0.5; }
+        if (z.side < 0 && pathX < z.x1 + gapHalf + 0.6) { pathX = z.x1 + gapHalf + 0.6; pathV = Math.abs(pathV) * 0.5; }
+      });
 
       function free(x, r) {
         return Math.abs(x - pathX) > gapHalf + r + 0.35;
@@ -155,10 +201,12 @@
 
       function add(kind, x, scale) {
         if (kind === 'pine' || kind === 'dead') scale *= TREE_SIZE;
+        const jitter = (Math.random() - 0.5) * 1.2;
+        if (isReserved(x, d + jitter, kinds[kind].radius * scale + 0.3)) return;
         items.push({
           kind: kind,
           x: x,
-          z: -(d + (Math.random() - 0.5) * 1.2),
+          z: -(d + jitter),
           s: scale,
           ry: Math.random() * Math.PI * 2,
           rz: kind === 'dead' ? (Math.random() - 0.5) * 0.15 : 0,
@@ -166,10 +214,54 @@
         });
       }
 
+      // Places planned earlier are added to the row at their far end (so they're forgotten last).
+      pending = pending.filter(p => {
+        if (p.atD > d) return true;
+        items.push(p.item);
+        return false;
+      });
+
       // Walls of trees at the edges, so the forest feels endless sideways.
       for (let side = -1; side <= 1; side += 2) {
         add('pine', side * (13 + Math.random() * 1.2), 0.9 + Math.random() * 0.5);
         if (Math.random() < 0.7) add(Math.random() < 0.8 ? 'pine' : 'dead', side * (15 + Math.random() * 4), 0.9 + Math.random() * 0.6);
+      }
+
+      // Behind the start line: the dark forest around the camp, with a clearing for the fire.
+      // Nothing stands between you and the spots where it can watch you from.
+      if (d < 0) {
+        for (let x = -11.5; x <= 11.5; x += 2.3) {
+          const tx = x + (Math.random() - 0.5) * 1.4;
+          if (Math.hypot(tx, d - CAMP.fireD) < 7) continue;
+          if (CAMP.eyes.some(e => distToSegment(tx, d, 0, 0, e.x, e.d) < 1.6)) continue;
+          if (Math.random() < 0.55) add(Math.random() < 0.8 ? 'pine' : 'dead', tx, 0.8 + Math.random() * 0.5);
+          else if (Math.random() < 0.4) add('bush', tx, 0.6 + Math.random() * 0.6);
+        }
+      }
+
+      // A fallen tree across the path: jump over it.
+      let logRow = null;
+      if (d > 100 && d >= nextLogD && !isReserved(pathX, d, 6)) {
+        const half = Math.max(gapHalf + 1, 3.2 + Math.random() * 1.6);
+        const lx = pathX + (Math.random() - 0.5) * 1.2;
+        logRow = { x0: lx - half - 0.8, x1: lx + half + 0.8 };
+        items.push({
+          kind: 'log', x: lx, z: -d, ld: d, s: 1, sx: half / LOG_HALF,
+          ry: (Math.random() - 0.5) * 0.24 + (Math.random() < 0.5 ? Math.PI : 0), rz: 0, r: 0,
+          log: { half: half }
+        });
+        // later on they come more often
+        nextLogD = d + 90 - diff * 40 + Math.random() * 70;
+      }
+
+      // Now and then: something somebody left behind.
+      if (d > 170 && d >= nextPlaceD && Math.abs(d - nextLogD) > 12) {
+        planPlace(d, gapHalf);
+        nextPlaceD = d + 170 + Math.random() * 150;
+      }
+
+      function nearLog(x, r) {
+        return logRow && x + r > logRow.x0 && x - r < logRow.x1;
       }
 
       // Obstacles: few at the start, more the further you run.
@@ -183,7 +275,7 @@
           const kind = Math.random() < 0.75 ? 'pine' : 'dead';
           const s = 0.8 + Math.random() * 0.5;
           const r = kinds[kind].radius * s * TREE_SIZE;
-          if (!free(x, r)) continue;
+          if (!free(x, r) || nearLog(x, r)) continue;
           let clash = false;
           for (let i = 0; i < items.length; i++) {
             if (Math.abs(items[i].x - x) < 2.2) { clash = true; break; }
@@ -197,7 +289,7 @@
       // Decoration: bushes and rocks (you run through them, so keep them off the safe path).
       for (let i = 0; i < 3; i++) {
         const x = (Math.random() * 2 - 1) * 14;
-        if (!free(x, 0.6) && Math.abs(x) < PLAY_HALF_WIDTH) continue;
+        if ((!free(x, 0.6) && Math.abs(x) < PLAY_HALF_WIDTH) || nearLog(x, 0.8)) continue;
         if (Math.random() < 0.55) add('bush', x, 0.6 + Math.random() * 0.7);
         else if (Math.random() < 0.4) add('rock', x, 0.5 + Math.random() * 0.9);
       }
@@ -208,7 +300,8 @@
     const dummy = new THREE.Object3D();
 
     function rebuild() {
-      const counts = { pine: 0, dead: 0, rock: 0, bush: 0 };
+      const counts = {};
+      Object.keys(kinds).forEach(name => { counts[name] = 0; });
       for (let r = 0; r < rows.length; r++) {
         const items = rows[r].items;
         for (let i = 0; i < items.length; i++) {
@@ -217,7 +310,7 @@
           if (counts[it.kind] >= k.mesh.instanceMatrix.count) continue;
           dummy.position.set(it.x, 0, it.z);
           dummy.rotation.set(0, it.ry, it.rz);
-          dummy.scale.set(it.s, it.s, it.s);
+          dummy.scale.set(it.sx || it.s, it.s, it.s);
           dummy.updateMatrix();
           k.mesh.setMatrixAt(counts[it.kind]++, dummy.matrix);
         }
@@ -246,39 +339,97 @@
       ground.position.z = -(Math.round(playerD / 4) * 4) - 25;
     }
 
-    // Push the player out of any trunk they run into. Returns true on a hit.
+    // Push the player out of anything solid they run into. Returns true on a hit.
+    // p.y is how high the player is off the ground (jumping over logs).
     function collide(p, radius) {
       let hit = false;
       const pz = -p.d;
       for (let r = 0; r < rows.length; r++) {
         const row = rows[r];
-        if (Math.abs(row.d - p.d) > 3) continue;
+        if (Math.abs(row.d - p.d) > 9) continue;
         for (let i = 0; i < row.items.length; i++) {
           const it = row.items[i];
-          if (it.r <= 0) continue;
           const dx = p.x - it.x, dz = pz - it.z;
-          const min = it.r + radius;
-          const dist2 = dx * dx + dz * dz;
-          if (dist2 < min * min) {
-            const dist = Math.sqrt(dist2) || 0.001;
-            const push = min - dist;
-            p.x += (dx / dist) * push;
-            p.d -= (dz / dist) * push;
-            hit = true;
+          if (it.r > 0) {
+            // tree trunk
+            const min = it.r + radius;
+            const dist2 = dx * dx + dz * dz;
+            if (dist2 < min * min) {
+              const dist = Math.sqrt(dist2) || 0.001;
+              const push = min - dist;
+              p.x += (dx / dist) * push;
+              p.d -= (dz / dist) * push;
+              hit = true;
+            }
+          } else if (it.box) {
+            // a building, a car, a fence
+            const cx = Math.max(-it.box.hw, Math.min(it.box.hw, dx));
+            const cz = Math.max(-it.box.hd, Math.min(it.box.hd, dz));
+            const ex = dx - cx, ez = dz - cz;
+            const dist = Math.hypot(ex, ez);
+            if (dist < radius) {
+              if (dist > 0.0001) {
+                p.x += ex / dist * (radius - dist);
+                p.d -= ez / dist * (radius - dist);
+              } else {
+                // inside it: leave by the nearest side
+                const ox = it.box.hw - Math.abs(dx), oz = it.box.hd - Math.abs(dz);
+                if (ox < oz) p.x += Math.sign(dx || 1) * (ox + radius);
+                else p.d -= Math.sign(dz || 1) * (oz + radius);
+              }
+              hit = true;
+            }
+          } else if (it.log && p.y < LOG_CLEAR) {
+            // a fallen tree: along = distance along the log, across = distance from it
+            const c = Math.cos(it.ry), s = Math.sin(it.ry);
+            const along = dx * c - dz * s;
+            const across = dx * s + dz * c;
+            const min = LOG_RADIUS + radius;
+            if (Math.abs(along) < it.log.half && Math.abs(across) < min) {
+              // which way is "in front of the log" for someone running towards -z
+              const front = c > 0 ? 1 : -1;
+              const out = Math.sign(across || front);
+              const push = min - Math.abs(across);
+              p.x += s * out * push;
+              p.d -= c * out * push;
+              // landing on its far side just slides you off; running into it trips you
+              if (out === front) hit = true;
+            }
           }
         }
       }
       return hit;
     }
 
+    // how far ahead the next fallen log is (Infinity if none)
+    function logAhead(d) {
+      let best = Infinity;
+      for (let r = 0; r < rows.length; r++) {
+        const items = rows[r].items;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].log && items[i].ld > d - 0.5) best = Math.min(best, items[i].ld - d);
+        }
+      }
+      return best;
+    }
+
+    // for testing: the abandoned places that exist right now
+    function places() {
+      const out = [];
+      rows.forEach(r => r.items.forEach(it => { if (it.box) out.push({ kind: it.kind, x: it.x, d: -it.z }); }));
+      return out;
+    }
+
     return {
+      places: places,
       reset: reset,
       update: update,
       collide: collide,
+      logAhead: logAhead,
       difficulty: difficulty,
       halfWidth: PLAY_HALF_WIDTH
     };
   }
 
-  window.World = { create: create };
+  window.World = { create: create, CAMP: CAMP };
 })();

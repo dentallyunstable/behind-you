@@ -11,13 +11,17 @@
   const MAX_GAP = 32;
   const LOOK_PENALTY = 1.5;     // it closes in this much faster (m/s) while you look back
   const STICK_RADIUS = 55;      // pixels
+  const FLICK_PX = 36;          // a quick flick up this far (in ~0.15 s) is a jump
+  const JUMP_SPEED = 4.4;
+  const GRAVITY = 14;
+  const SIT_EYE = 0.95;         // eye height sitting by the fire
 
   const $ = id => document.getElementById(id);
   const ui = {
     hud: $('hud'), distance: $('distance'), staminaFill: $('staminaFill'),
     stick: $('stick'), knob: $('knob'), menu: $('menu'), over: $('over'),
     result: $('result'), best: $('best'), bestMenu: $('bestMenu'),
-    danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static')
+    danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint')
   };
 
   // ---- renderer / scene ----------------------------------------------------
@@ -55,6 +59,7 @@
 
   const tex = Textures.build();
   const world = World.create(scene, tex);
+  const camp = Camp.create(scene, tex);
   // the thing behind you, and a second one for the figures you sometimes see ahead
   const chaser = Monster.create(scene, tex);
   const watcher = Monster.create(scene, tex);
@@ -127,9 +132,19 @@
   }
   showBestMenu();
 
+  // has the player ever jumped over a log? (until then, a hint shows when one is coming)
+  let learnedJump = false;
+  try { learnedJump = localStorage.getItem('behindyou.jumped') === '1'; } catch (e) { /* ignore */ }
+  const touchScreen = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  ui.hint.textContent = touchScreen ? 'FLICK UP TO JUMP' : 'SPACE TO JUMP';
+
   // ---- input: one floating joystick (+ keyboard on computers) ----------------
   const input = { x: 0, y: 0 };
-  const stick = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  const stick = { id: null, ox: 0, oy: 0, x: 0, y: 0, hist: [] };
+  let jumpBuffer = 0;
+  function requestJump() {
+    if (state === 'play') jumpBuffer = 0.18;
+  }
   const keys = {};
 
   function placeStickIdle() {
@@ -144,13 +159,15 @@
   function onDown(e) {
     Sfx.init();
     if (state === 'menu' || (state === 'over' && stateTime > 0.8)) {
-      startGame();
+      startIntro();
     }
-    if (state !== 'play' || stick.id !== null) return;
+    // the thumb can already rest on the screen while you get up from the fire
+    if ((state !== 'play' && state !== 'intro') || stick.id !== null) return;
     stick.id = e.pointerId;
     stick.ox = e.clientX;
     stick.oy = e.clientY;
     stick.x = stick.y = 0;
+    stick.hist = [{ t: performance.now(), y: e.clientY }];
     ui.stick.style.left = e.clientX + 'px';
     ui.stick.style.top = e.clientY + 'px';
     ui.stick.style.bottom = 'auto';
@@ -164,6 +181,17 @@
     ui.knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
     stick.x = dx / STICK_RADIUS;
     stick.y = -dy / STICK_RADIUS;
+    // a quick flick upwards: jump
+    const t = performance.now();
+    stick.hist.push({ t: t, y: e.clientY });
+    // keep one sample from before the window: where the thumb was resting when the flick began
+    while (stick.hist.length > 2 && t - stick.hist[1].t > 160) stick.hist.shift();
+    let lowest = e.clientY;
+    for (let i = 0; i < stick.hist.length; i++) lowest = Math.max(lowest, stick.hist[i].y);
+    if (lowest - e.clientY > FLICK_PX) {
+      requestJump();
+      stick.hist = [{ t: t, y: e.clientY }];
+    }
   }
   function onUp(e) {
     if (e.pointerId !== stick.id) return;
@@ -181,7 +209,9 @@
     keys[e.code] = true;
     if ((e.code === 'Space' || e.code === 'Enter') && (state === 'menu' || (state === 'over' && stateTime > 0.8))) {
       Sfx.init();
-      startGame();
+      startIntro();
+    } else if (e.code === 'Space' && !e.repeat) {
+      requestJump();
     }
   });
   window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -203,7 +233,7 @@
   // ---- game state ------------------------------------------------------------
   let state = 'menu';
   let stateTime = 0;
-  const player = { x: 0, d: 0, vx: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
+  const player = { x: 0, d: 0, y: 0, vx: 0, vy: 0, speed: 0, stamina: 1, stumble: 0, hitCooldown: 0 };
   let gap = START_GAP;
   let bobPhase = 0, lastStep = 0, shake = 0, flicker = 0;
   let heartTimer = 0, cricketTimer = 2;
@@ -220,18 +250,26 @@
   let paceState = 'normal', pace = 1, paceTimer = 0;
   // figures watching from between the trees ahead
   let watcherTimer = 0, watcherActive = false, watcherD = 0, watcherX = 0;
+  // the camp: sitting by the fire, then the sound, then you run
+  let introT = -1, introSide = 1, introLookYaw = Math.PI, introLookPitch = 0, introRunYaw = 0;
+  let introBeats = 0, seat = 1, lightOn = false, vmRaise = 1, crackleTimer = 0;
 
   function setState(s) {
     state = s;
     stateTime = 0;
-    ui.menu.classList.toggle('hidden', s !== 'menu');
+    ui.menu.classList.toggle('hidden', s !== 'menu' && s !== 'intro');
+    ui.menu.classList.toggle('fade', s === 'intro');
     ui.over.classList.toggle('hidden', s !== 'over');
     ui.hud.classList.toggle('hidden', s !== 'play');
     ui.stick.classList.toggle('hidden', s !== 'play');
   }
 
   function resetRun() {
-    player.x = 0; player.d = 0; player.vx = 0; player.speed = 0;
+    player.x = 0; player.d = 0; player.y = 0; player.vx = 0; player.vy = 0; player.speed = 0;
+    jumpBuffer = 0;
+    seat = 1; lightOn = false; vmRaise = 1; introT = -1;
+    viewmodel.visible = false;
+    ui.hint.classList.add('hidden');
     player.stamina = 1; player.stumble = 0; player.hitCooldown = 0;
     gap = START_GAP;
     bobPhase = 0; lastStep = 0; shake = 0; flicker = 0;
@@ -253,11 +291,57 @@
     ui.danger.style.opacity = '0';
   }
 
-  function startGame() {
-    resetRun();
+  // Tap: a branch snaps somewhere past the fire. You turn... two eyes. You get up and run.
+  function startIntro() {
+    if (state === 'over') resetRun();
     placeStickIdle();
-    setState('play');
-    Sfx.setAmbience(0.9);
+    setState('intro');
+    introT = 0;
+    introBeats = 0;
+    introSide = Math.random() < 0.5 ? -1 : 1;
+    const e = World.CAMP.eyes[introSide > 0 ? 1 : 0];
+    // which way to turn your head to look at it (seated, facing the fire = PI)
+    introLookYaw = Math.atan2(-e.x, e.d);
+    if (introLookYaw < 0) introLookYaw += Math.PI * 2;
+    introLookPitch = Math.atan2(2.7 - SIT_EYE, Math.hypot(e.x, e.d));
+    // then turn away from it to run (the forward direction is yaw 0, or a full turn)
+    introRunYaw = introLookYaw > Math.PI ? Math.PI * 2 : 0;
+    chaser.setMode('still');
+    chaser.place(e.x, 0, -e.d, 0, 0, 3);
+    chaser.root.visible = true;
+  }
+
+  function updateIntro(dt) {
+    const t0 = introT;
+    introT += dt;
+    const at = time => t0 < time && introT >= time;
+    if (at(0.15)) {
+      // the sound comes from where it stands (seated facing the fire, your right is -x)
+      Sfx.snap(-introSide * 0.75);
+      Sfx.setAmbience(0); // the crickets go quiet
+    }
+    if (at(0.9) || at(1.3) || at(1.62) || at(1.9)) {
+      Sfx.heartbeat(0.45 + introBeats * 0.08);
+      introBeats++;
+      beatPulse = 1;
+    }
+    if (at(1.0)) {
+      Sfx.startBreathing();
+      Sfx.setBreathing(0.75);
+    }
+    chaser.update(dt);
+    if (at(2.05)) chaser.root.visible = false; // you've turned away: you never see it leave
+    if (at(2.15)) {
+      lightOn = true;
+      viewmodel.visible = true;
+      Sfx.click();
+    }
+    beatPulse = Math.max(0, beatPulse - dt * 4);
+    if (introT >= 2.45) {
+      setState('play');
+      player.speed = 3;
+      Sfx.setAmbience(0.9);
+    }
   }
 
   function caught() {
@@ -270,6 +354,7 @@
     watcherActive = false;
     chaser.setMode('lunge');
     chaser.root.visible = true;
+    ui.hint.classList.add('hidden');
     Sfx.caught();
     Sfx.stopBreathing();
     Sfx.setAmbience(0);
@@ -277,7 +362,7 @@
   }
 
   function finishCaught() {
-    const dist = Math.floor(player.d);
+    const dist = Math.max(0, Math.floor(player.d));
     if (dist > best) { best = dist; saveBest(best); }
     ui.result.textContent = 'You ran ' + dist + ' meters.';
     ui.best.textContent = 'Furthest: ' + best + ' m';
@@ -329,6 +414,30 @@
     player.x = Math.max(-world.halfWidth, Math.min(world.halfWidth, player.x));
 
     world.update(player.d);
+
+    // jumping (over fallen logs)
+    jumpBuffer -= dt;
+    if (jumpBuffer > 0 && player.y <= 0 && player.stumble <= 0) {
+      player.vy = JUMP_SPEED;
+      jumpBuffer = 0;
+      Sfx.jump();
+    }
+    if (player.y > 0 || player.vy > 0) {
+      player.vy -= GRAVITY * dt;
+      player.y += player.vy * dt;
+      if (player.y <= 0) {
+        player.y = 0;
+        player.vy = 0;
+        Sfx.land();
+        shake = Math.max(shake, 0.15);
+      }
+    }
+    const logAhead = world.logAhead(player.d);
+    if (!learnedJump && Math.abs(logAhead) < 1 && player.y > 0.25) {
+      learnedJump = true;
+      try { localStorage.setItem('behindyou.jumped', '1'); } catch (e) { /* ignore */ }
+    }
+    ui.hint.classList.toggle('hidden', learnedJump || !(logAhead > 0.5 && logAhead < 16));
 
     player.hitCooldown -= dt;
     if (world.collide(player, PLAYER_RADIUS) && player.hitCooldown <= 0) {
@@ -479,7 +588,7 @@
     camera.updateProjectionMatrix();
 
     // HUD
-    ui.distance.textContent = Math.floor(player.d) + ' m';
+    ui.distance.textContent = Math.max(0, Math.floor(player.d)) + ' m';
     ui.staminaFill.style.width = (player.stamina * 100).toFixed(1) + '%';
     ui.staminaFill.style.background = player.stamina < 0.25 ? '#a04030' : '#c8b878';
   }
@@ -508,7 +617,7 @@
 
   function updateCamera(dt) {
     const speedNorm = Math.min(player.speed / 8, 1.4);
-    bobPhase += player.speed * dt * 1.3;
+    if (player.y <= 0) bobPhase += player.speed * dt * 1.3;
     const bob = Math.abs(Math.sin(bobPhase)) * 0.07 * speedNorm;
     const step = Math.floor(bobPhase / Math.PI);
     if (step !== lastStep) {
@@ -522,7 +631,7 @@
     const tremble = shake * 0.2 + closeNow * closeNow * 0.03;
     const sx = (Math.random() - 0.5) * tremble, sy = (Math.random() - 0.5) * tremble;
 
-    body.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy, -player.d);
+    body.position.set(player.x + sx, EYE_HEIGHT + bob - 0.03 + sy + player.y, -player.d);
     body.rotation.y = -player.vx * 0.03;
     body.rotation.x = -0.06 + Math.sin(bobPhase * 2) * 0.008 * speedNorm;
     body.rotation.z = -player.vx * 0.01 + Math.sin(bobPhase) * 0.012 * speedNorm;
@@ -537,18 +646,62 @@
     // flashlight swings with your arm
     const swayX = Math.sin(bobPhase) * 0.012 * speedNorm;
     const swayY = Math.abs(Math.cos(bobPhase)) * 0.015 * speedNorm;
-    viewmodel.position.set(vmBase.x + swayX, vmBase.y + swayY - bob * 0.3, -0.42);
+    // the hand comes up as you switch the light on, and swings up as you jump
+    vmRaise = Math.max(0, vmRaise - dt * 3.5);
+    viewmodel.position.set(vmBase.x + swayX, vmBase.y + swayY - bob * 0.3 - vmRaise * vmRaise * 0.3 + Math.min(player.vy, 0) * -0.012, -0.42);
     flashlight.target.position.set(swayX * 25 + player.vx * 0.15, -1.6 + swayY * 20, -10);
     // when caught, the light lands right on its face
     if (state === 'caught') flashlight.target.position.set(-3, 4, -10);
 
     let intensity = 2.4 * (0.97 + Math.random() * 0.03);
     if (flicker > 0) intensity *= Math.random() < 0.5 ? 0.05 : 0.4;
-    intensity *= lightLevel();
+    intensity *= lightLevel() * (lightOn ? 1 : 0);
     // when it catches you, the light shows its face for a split second, then dies
     if (state === 'caught') intensity = stateTime < 0.55 ? 2.6 : 0;
     flashlight.intensity = intensity;
     lensMat.color.setScalar(0.15 + 0.85 * Math.min(1, intensity / 2.4));
+  }
+
+  function smooth(a, b, t) {
+    const k = Math.max(0, Math.min(1, (t - a) / (b - a)));
+    return k * k * (3 - 2 * k);
+  }
+
+  // Sitting by the fire (menu), and the intro: look towards the sound, then get up and turn to run.
+  function updateCampCamera(dt) {
+    const t = performance.now() / 1000;
+    let yaw = Math.PI + Math.sin(t * 0.31) * 0.05;
+    let pitch = -0.13 + Math.sin(t * 0.47) * 0.012;
+    seat = 1;
+    if (state === 'intro') {
+      const look = smooth(0.35, 0.8, introT), turn = smooth(1.75, 2.45, introT);
+      yaw += (introLookYaw - yaw) * look;
+      pitch += (introLookPitch - pitch) * look;
+      yaw += (introRunYaw - yaw) * turn;
+      pitch += (-0.06 - pitch) * turn;
+      seat = 1 - smooth(1.7, 2.3, introT);
+    }
+    // frozen, trembling, heart pounding
+    const tremble = state === 'intro' && introT > 0.8 ? 0.006 + beatPulse * 0.01 : 0;
+    body.position.set(
+      player.x + (Math.random() - 0.5) * tremble,
+      SIT_EYE + (EYE_HEIGHT - SIT_EYE) * (1 - seat) + Math.sin(t * 1.7) * 0.006 + (Math.random() - 0.5) * tremble,
+      -player.d
+    );
+    body.rotation.set(pitch, yaw, 0);
+    camera.rotation.set(0, 0, 0);
+    arm.rotation.set(0, 0, 0);
+    if (camera.fov !== baseFov) {
+      camera.fov = baseFov;
+      camera.updateProjectionMatrix();
+    }
+    ambient.intensity = AMBIENT;
+
+    vmRaise = viewmodel.visible ? Math.max(0, vmRaise - dt * 3.5) : 1;
+    viewmodel.position.set(vmBase.x, vmBase.y - vmRaise * vmRaise * 0.3, -0.42);
+    flashlight.target.position.set(0, -1.6, -10);
+    flashlight.intensity = lightOn ? 2.4 : 0;
+    lensMat.color.setScalar(lightOn ? 1 : 0.15);
   }
 
   // ---- main loop -------------------------------------------------------------
@@ -583,7 +736,17 @@
       }
     } else if (state === 'menu') {
       world.update(player.d);
-      bobPhase += dt * 0.6;
+    } else if (state === 'intro') {
+      updateIntro(dt);
+    }
+
+    // the campfire: still burning back there after you've run
+    camp.update(dt, body.position);
+    Sfx.setFire(state === 'caught' || state === 'over' ? 0 : camp.loudness(body.position));
+    crackleTimer -= dt;
+    if (crackleTimer <= 0) {
+      crackleTimer = 0.04 + Math.random() * 0.4;
+      Sfx.crackle();
     }
 
     // now and then, one cricket far away
@@ -593,7 +756,8 @@
       if (state !== 'caught') Sfx.cricket();
     }
 
-    if (state !== 'over') updateCamera(dt);
+    if (state === 'menu' || state === 'intro') updateCampCamera(dt);
+    else if (state !== 'over') updateCamera(dt);
     renderer.render(scene, camera);
   }
 
@@ -615,5 +779,6 @@
     debug: () => ({ chaser: chaser.root.visible, watcher: watcher.root.visible, watcherActive: watcherActive, lookT: lookT, blackoutT: blackoutT, gap: gap }), setGap: v => { gap = v; },
     closeCall: () => { player.hitCooldown = 0; startLook(1.1, 0.15, true, true); },
     blackout: () => { blackoutTimer = 0; }, watcher: () => { watcherTimer = 0; player.d = Math.max(player.d, 260); },
-    player: player, getGap: () => gap, getState: () => state, input: input, stick: stick };
+    player: player, getGap: () => gap, getState: () => state, input: input, stick: stick,
+    jump: requestJump, places: () => world.places(), logAhead: () => world.logAhead(player.d), introT: () => introT };
 })();

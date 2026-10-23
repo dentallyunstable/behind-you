@@ -102,6 +102,69 @@
     rock:   [0.5 + E, 0 + E,   1 - E,   0.5 - E]
   };
 
+  // ---- Props atlas: 4 materials for the abandoned places (same layout as the tree atlas)
+  function buildPropsAtlas() {
+    const S = 64;
+    const c = makeCanvas(S * 2, S * 2);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+
+    // Top-left: weathered grey planks, with dark gaps and a few nails
+    const n1 = makeNoise(S, 8);
+    const board = [];
+    for (let i = 0; i < 8; i++) board.push(0.7 + Math.random() * 0.4);
+    paint(ctx, 0, 0, S, S, (x, y) => {
+      const b = Math.floor(y / 8);
+      if (y % 8 === 0) return [14, 12, 10];
+      const grain = n1(x * 0.3, y * 3) * 0.35;
+      const v = (0.45 + grain + Math.random() * 0.12) * board[b];
+      return [92 * v, 84 * v, 72 * v];
+    });
+    ctx.fillStyle = '#1a1612';
+    for (let i = 0; i < 10; i++) ctx.fillRect(Math.floor(rand(2, S - 2)), Math.floor(rand(0, 8)) * 8 + 3, 1, 1);
+
+    // Top-right: faded paint eaten by rust
+    const n2 = makeNoise(S, 8);
+    const n2b = makeNoise(S, 16);
+    paint(ctx, S, 0, S, S, (x, y) => {
+      const r = n2(x, y) * 0.7 + n2b(x, y) * 0.4;
+      const v = 0.6 + Math.random() * 0.2;
+      if (r > 0.62) return [96 * v, 50 * v, 26 * v];
+      if (r > 0.52) return [70 * v, 40 * v, 26 * v];
+      return [58 * v, 70 * v, 74 * v];
+    });
+
+    // Bottom-left: dirty, stained tent canvas
+    const n3 = makeNoise(S, 6);
+    paint(ctx, 0, S, S, S, (x, y) => {
+      const v = 0.5 + n3(x, y) * 0.35 + Math.random() * 0.1 - (x % 16 === 0 ? 0.15 : 0);
+      return [96 * v, 92 * v, 58 * v];
+    });
+    ctx.fillStyle = 'rgba(30,20,14,0.5)';
+    for (let i = 0; i < 6; i++) ctx.fillRect(Math.floor(rand(0, S)), S + Math.floor(rand(0, S - 10)), Math.floor(rand(3, 8)), Math.floor(rand(4, 12)));
+
+    // Bottom-right: soot and darkness (doorways, windows, tyres, burnt wood)
+    paint(ctx, S, S, S, S, () => {
+      const v = 6 + Math.random() * 10;
+      return [v, v * 0.9, v * 0.8];
+    });
+
+    return toTexture(c, false);
+  }
+
+  // Soft round glow, for the campfire seen from far away.
+  function buildGlow() {
+    const S = 32;
+    const c = makeCanvas(S, S);
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, S, S);
+    return toTexture(c, false);
+  }
+
   function buildGround() {
     const S = 64;
     const c = makeCanvas(S, S);
@@ -200,9 +263,12 @@
 
   window.Textures = {
     ATLAS: ATLAS,
+    PROPS: { planks: ATLAS.bark, rust: ATLAS.leaves, canvas: ATLAS.dead, soot: ATLAS.rock },
     build: function () {
       return {
         atlas: buildAtlas(),
+        props: buildPropsAtlas(),
+        glow: buildGlow(),
         ground: buildGround(),
         bush: buildBush(),
         hand: buildHand(),

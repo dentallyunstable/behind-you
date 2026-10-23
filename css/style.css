@@ -123,5 +123,31 @@ html, body {
 .blink { margin-top: 20px; font-size: 18px; animation: blink 1.2s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0.15; } }
 
+/* The start screen sits over the campfire: text at the top and bottom, the fire in between. */
+.overlay.camp {
+  justify-content: space-between;
+  padding-top: max(28px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0) 32%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.85));
+  text-shadow: 2px 2px 0 #000;
+  transition: opacity 0.5s;
+}
+.overlay.camp .blink { margin-top: 8px; }
+.overlay.fade { opacity: 0; }
+
+#hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 62%;
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 3px;
+  pointer-events: none;
+  text-shadow: 2px 2px 0 #000;
+  animation: blink 0.8s steps(2) infinite;
+}
+
 .hidden { display: none !important; }
 .overlay.solid { background: #000; }
