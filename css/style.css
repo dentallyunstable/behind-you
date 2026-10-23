@@ -49,6 +49,7 @@ html, body {
 #danger {
   background: radial-gradient(ellipse at center, rgba(120,0,0,0) 35%, rgba(140,0,0,0.9) 100%);
   opacity: 0;
+  will-change: opacity; /* it pulses with your heartbeat: fade it, don't repaint the whole screen */
 }
 #static {
   image-rendering: pixelated;

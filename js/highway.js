@@ -225,9 +225,10 @@
         }
       }
       meshes.forEach(m => {
-        // (only send the graphics card the part that's in use)
+        // (only send the graphics card the part that's in use; with none of them around, don't draw it at all)
         m.instanceMatrix.updateRange.count = m.count * 16;
         m.instanceMatrix.needsUpdate = true;
+        m.visible = m.count > 0;
       });
       // the road and the ground under it
       [road, ground].forEach(mesh => {
@@ -324,7 +325,9 @@
           p.x = x + (Math.random() * 2 - 1) * 14;
           p.z = -d + (Math.random() * 2 - 1.3) * 16;
         }
-        rainPos.set([p.x, p.y, p.z, p.x + 0.03, p.y + 0.55, p.z], i * 6);
+        const o = i * 6;
+        rainPos[o] = p.x; rainPos[o + 1] = p.y; rainPos[o + 2] = p.z;
+        rainPos[o + 3] = p.x + 0.03; rainPos[o + 4] = p.y + 0.55; rainPos[o + 5] = p.z;
       }
       rainGeo.attributes.position.needsUpdate = true;
     }

@@ -116,10 +116,10 @@
       finish.wheel.rotation.z = 0;
       cab.update();
       showHealth();
-      ui.staticCanvas.style.opacity = '0';
-      ui.danger.style.opacity = '0';
-      ui.tunnel.style.transform = 'scale(2.4)';
-      ui.fade.style.opacity = '0';
+      ui.set(ui.staticCanvas, 'opacity', '0');
+      ui.set(ui.danger, 'opacity', '0');
+      ui.set(ui.tunnel, 'transform', 'scale(2.4)');
+      ui.set(ui.fade, 'opacity', '0');
     }
 
     // ---- the truck's health ---------------------------------------------------------
@@ -240,9 +240,9 @@
       Sfx.setScreech(truck.brake > 0.5 && truck.speed > 6 ? (truck.brake - 0.5) * 2 * speedNorm : 0);
 
       // HUD: how far, and how close the brakes are to choking the engine
-      ui.distance.textContent = distance() + ' m';
+      ui.text(ui.distance, distance() + ' m');
       const heat = truck.stall > 0 ? 1 : truck.heat / STALL_AFTER;
-      ui.sprintRing.style.strokeDashoffset = (BRAKE_RING * (1 - heat)).toFixed(1);
+      ui.set(ui.sprintRing, 'strokeDashoffset', (BRAKE_RING * (1 - heat)).toFixed(1));
       ui.sprint.classList.toggle('low', heat > 0.6);
       ui.sprint.classList.toggle('tired', truck.stall > 0);
     }
@@ -494,7 +494,8 @@
       }
       if (px > 0) {
         const poly = cab.glassOnScreen(camera, window.innerWidth, window.innerHeight);
-        ui.wet.style.clipPath = ui.wet.style.webkitClipPath = poly || 'inset(100%)';
+        ui.set(ui.wet, 'clipPath', poly || 'inset(100%)');
+        ui.set(ui.wet, 'webkitClipPath', poly || 'inset(100%)');
       }
     }
 
@@ -543,9 +544,9 @@
       beatPulse = Math.max(0, beatPulse - dt * 4);
       const close = ctx.state() === 'play' ? closeNow : 0;
       const danger = Math.max(0, (close - 0.35) / 0.65);
-      ui.danger.style.opacity = (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3);
+      ui.set(ui.danger, 'opacity', (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3));
       const tunnel = 2.4 - Math.pow(close, 1.5) * 1.35 - beatPulse * close * 0.12;
-      ui.tunnel.style.transform = 'scale(' + tunnel.toFixed(3) + ')';
+      ui.set(ui.tunnel, 'transform', 'scale(' + tunnel.toFixed(3) + ')');
       // (in the menu: zoomed in on the mirror)
       const menuFov = clamp(2 * Math.atan(Math.tan(13 * Math.PI / 180) / camera.aspect) * 180 / Math.PI, 12, 48);
       const driveFov = ctx.baseFov() * (1 - close * 0.06 + beatPulse * close * 0.025);
@@ -586,7 +587,7 @@
       // the wheel turns with your steering (and catches the slide when the back steps out)
       finish.wheel.rotation.z = truck.steer * 1.7 - truck.drift * 2;
       cab.update(dt);
-      ui.wheelArt.style.transform = 'rotate(' + (truck.steer * 110).toFixed(1) + 'deg)';
+      ui.set(ui.wheelArt, 'transform', 'rotate(' + (truck.steer * 110).toFixed(1) + 'deg)');
 
       // the headlights and the dials
       let lights = (truck.stall > 0 ? (Math.random() < 0.35 ? 0.3 : 0.85) : 1) * lightLevel() * (ctx.state() === 'menu' ? 0.7 : 1);
@@ -643,12 +644,12 @@
         finish.dome.intensity = caughtT < 2.3 ? 1.6 : 0; // its face, for a split second
       }
       if (caughtT > 2.3) {
-        ui.staticCanvas.style.opacity = '1';
+        ui.set(ui.staticCanvas, 'opacity', '1');
         ctx.drawStatic();
       }
       if (caughtT > 3.3) {
-        ui.staticCanvas.style.opacity = '0';
-        ui.danger.style.opacity = '0';
+        ui.set(ui.staticCanvas, 'opacity', '0');
+        ui.set(ui.danger, 'opacity', '0');
         finish.dome.intensity = 0;
         chaser.root.visible = false;
         ctx.onCaught(distance());
@@ -801,7 +802,7 @@
       placeChaser(dt);
       Sfx.setRoad(Math.min(1, truck.speed / CRUISE_MAX), 0);
       Sfx.setBreathing(Math.max(0.2, 0.8 - escapeT * 0.2));
-      ui.fade.style.opacity = smooth(0.8, 3.2, escapeT).toFixed(3);
+      ui.set(ui.fade, 'opacity', smooth(0.8, 3.2, escapeT).toFixed(3));
       if (escapeT >= 3.7) {
         escapeT = -1;
         Sfx.engineStop(2.5);

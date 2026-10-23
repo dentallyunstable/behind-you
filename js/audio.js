@@ -13,6 +13,15 @@
   let engine = null;
   let roadGain = null, roadFilter = null, screechGain = null, screechFilter = null;
   let rainGain = null, radioGain = null;
+  // what each steady sound was last set to: most of them are set every frame, but the sound engine
+  // only needs to hear about it when something actually changes
+  const last = { breath: -1, road: -1, rough: -1, screech: -1, rain: -1, radio: -1, rpm: -1, miss: false };
+  function same(key, v, step) {
+    // (silence always gets through, so a fade ends at exactly nothing)
+    if (v === last[key] || (v !== 0 && Math.abs(v - last[key]) < step)) return true;
+    last[key] = v;
+    return false;
+  }
 
   function init() {
     if (ctx) {
@@ -171,12 +180,14 @@
       breathSrc.loop = true;
       breathSrc.connect(breathGain);
       breathSrc.start(0, Math.random() * 5);
+      last.breath = -1; // (the new loop needs to hear how fast to go)
     },
     stopBreathing: function () {
       if (breathSrc) { try { breathSrc.stop(); } catch (e) { /* already stopped */ } breathSrc = null; }
     },
     setBreathing: function (level) {
       if (!breathGain) return;
+      if (same('breath', level, 0.01)) return;
       const t = now();
       breathGain.gain.setTargetAtTime(0.35 + level * 0.65, t, 0.3);
       if (breathSrc) breathSrc.playbackRate.setTargetAtTime(0.95 + level * 0.2, t, 0.5);
@@ -303,6 +314,11 @@
       if (!engine) return;
       const t = now();
       const miss = rough > 0 && Math.random() < rough * 0.5;
+      // (steady revs: nothing to change)
+      if (!miss && !last.miss && engine.set && Math.abs(rpm - last.rpm) < 0.004) return;
+      last.miss = miss;
+      last.rpm = rpm;
+      engine.set = true;
       const k = (0.8 + rpm * 1.25) * (miss ? 0.55 : 1);
       engine.oscs.forEach((o, i) => {
         o.frequency.cancelScheduledValues(t);
@@ -343,8 +359,11 @@
         src.start();
       }
       const t = now();
-      roadGain.gain.setTargetAtTime(speed * 0.09 + rough * 0.22, t, 0.1);
-      roadFilter.frequency.setTargetAtTime(160 + speed * 260 + rough * 500, t, 0.1);
+      const roadSame = same('road', speed, 0.005), roughSame = same('rough', rough, 0.005);
+      if (!roadSame || !roughSame) {
+        roadGain.gain.setTargetAtTime(speed * 0.09 + rough * 0.22, t, 0.1);
+        roadFilter.frequency.setTargetAtTime(160 + speed * 260 + rough * 500, t, 0.1);
+      }
       if (rough > 0 && Math.random() < rough * 0.15) noise(0.08, 'lowpass', 200, 1, 0.3 * rough);
     },
     // rain drumming on the cab roof (0..1)
@@ -365,7 +384,7 @@
         rainGain.connect(master);
         src.start();
       }
-      rainGain.gain.setTargetAtTime(v * 0.07, now(), 0.4);
+      if (!same('rain', v, 0.005)) rainGain.gain.setTargetAtTime(v * 0.07, now(), 0.4);
       // a few heavier drops on the roof
       if (v > 0.05 && Math.random() < 0.3) noise(0.02, 'bandpass', 1200 + Math.random() * 1500, 2, 0.05 * v, (Math.random() - 0.5) * 0.8);
     },
@@ -387,7 +406,7 @@
         radioGain.connect(master);
         src.start();
       }
-      radioGain.gain.setTargetAtTime(v * 0.035, now(), 0.05);
+      if (!same('radio', v, 0.005)) radioGain.gain.setTargetAtTime(v * 0.035, now(), 0.05);
       if (v > 0.05 && Math.random() < 0.08) noise(0.03, 'highpass', 3000, 1, 0.06 * v);
     },
     // the hazard lights' relay: tick... tock
@@ -417,6 +436,9 @@
         screechGain.connect(master);
         src.start();
       }
+      // (silent, and it already was: nothing to do)
+      if (v === 0 && last.screech === 0) return;
+      last.screech = v;
       const t = now();
       screechGain.gain.setTargetAtTime(v * 0.35, t, 0.06);
       screechFilter.frequency.setTargetAtTime(2100 + Math.random() * 500, t, 0.05);

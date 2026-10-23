@@ -21,16 +21,15 @@
     onWheel.visible = false;
     finish.wheel.add(Geo.still(onWheel));
     // 10 and 2 o'clock (seen from the seat, +x is on your left)
+    const fists = [];
     [{ a: 0.5, elbow: [0.66, 1.0, 0.3] }, { a: Math.PI - 0.5, elbow: [0.18, 1.0, 0.3] }].forEach(h => {
       const grip = new THREE.Group();
       grip.position.set(Math.cos(h.a) * 0.17, Math.sin(h.a) * 0.17, 0);
       grip.rotation.z = h.a;
       onWheel.add(Geo.still(grip));
-      // the fist and the thumb
-      grip.add(Geo.still(new THREE.Mesh(Geo.merge([
-        Geo.part(new THREE.BoxGeometry(0.075, 0.065, 0.07), FULL, Geo.mat(0.012, 0, -0.012)),
-        Geo.part(new THREE.BoxGeometry(0.022, 0.05, 0.022), FULL, Geo.mat(-0.02, 0.0, 0.03))
-      ]), skin)));
+      // the fist and the thumb (both hands are one piece on the wheel)
+      fists.push(Geo.part(new THREE.BoxGeometry(0.075, 0.065, 0.07), FULL, grip.matrix.clone().multiply(Geo.mat(0.012, 0, -0.012))));
+      fists.push(Geo.part(new THREE.BoxGeometry(0.022, 0.05, 0.022), FULL, grip.matrix.clone().multiply(Geo.mat(-0.02, 0.0, 0.03))));
       // the forearm runs from the wrist back to the elbow (below the view)
       const armGeo = new THREE.BoxGeometry(0.06, 0.06, 1);
       armGeo.translate(0, 0, 0.5);
@@ -38,6 +37,7 @@
       arms.add(arm);
       hands.push({ grip: grip, arm: arm, elbow: new THREE.Vector3(h.elbow[0], h.elbow[1], h.elbow[2]) });
     });
+    onWheel.add(Geo.still(new THREE.Mesh(Geo.merge(fists), skin)));
     const tmp = new THREE.Vector3();
 
     // ---- the gauges behind the wheel: speed, and the engine's temperature ----------
@@ -97,20 +97,20 @@
     const muv = mirrorGeo.attributes.uv;
     for (let i = 0; i < muv.count; i++) muv.setX(i, 1 - muv.getX(i)); // a mirror shows things the other way round
     const mirror = new THREE.Mesh(mirrorGeo, new THREE.MeshBasicMaterial({ map: mirrorRT.texture, fog: false }));
-    const mirrorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.11, 0.03), finish.propsMat);
     const mirrorRoot = new THREE.Group();
     mirrorRoot.position.set(0.3, 1.72, 1.07); // a little towards you, so it's in view on a phone
     root.add(mirrorRoot);
-    mirrorRoot.add(mirror, mirrorFrame);
+    mirrorRoot.add(mirror);
     mirror.position.z = 0.016;
     Geo.still(mirror);
-    Geo.still(mirrorFrame);
     car.updateMatrixWorld();
     mirrorRoot.lookAt(car.localToWorld(EYE.clone())); // angled at your eyes
     Geo.still(mirrorRoot);
-    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.02), finish.propsMat);
-    stalk.position.set(0.3, 1.8, 1.09);
-    root.add(Geo.still(stalk));
+    // its frame, and the stalk holding it up (one piece; the stalk is placed in the truck, so it's moved into the mirror's frame)
+    mirrorRoot.add(Geo.still(new THREE.Mesh(Geo.merge([
+      Geo.part(new THREE.BoxGeometry(0.32, 0.11, 0.03), FULL),
+      Geo.part(new THREE.BoxGeometry(0.02, 0.09, 0.02), FULL, mirrorRoot.matrix.clone().invert().multiply(Geo.mat(0.3, 1.8, 1.09)))
+    ]), finish.propsMat)));
     // (it sits further back than the mirror, so the rear window fills it)
     const mirrorCam = new THREE.PerspectiveCamera(20, 0.3 / 0.094, 0.1, 50);
     mirrorCam.position.set(0, 1.64, 0.28);
@@ -298,14 +298,16 @@
     fc.height = 60;
     const fx = fc.getContext('2d', { willReadFrequently: true });
     function fogUp() {
-      fx.clearRect(0, 0, fc.width, fc.height);
-      for (let y = 0; y < fc.height; y++) {
-        for (let x = 0; x < fc.width; x++) {
-          const v = 120 + Math.random() * 40 | 0;
-          fx.fillStyle = 'rgba(' + v + ',' + v + ',' + (v + 8) + ',' + (0.72 + Math.random() * 0.2).toFixed(2) + ')';
-          fx.fillRect(x, y, 1, 1);
-        }
+      // (every pixel its own grey, written in one go: much quicker than painting them one by one)
+      const img = fx.createImageData(fc.width, fc.height), px = img.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const v = 120 + Math.random() * 40 | 0;
+        px[i] = v;
+        px[i + 1] = v;
+        px[i + 2] = v + 8;
+        px[i + 3] = Math.round(+(0.72 + Math.random() * 0.2).toFixed(2) * 255);
       }
+      fx.putImageData(img, 0, 0);
       fx.save();
       fx.globalCompositeOperation = 'destination-out';
       fx.translate(fc.width, 0);

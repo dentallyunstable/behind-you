@@ -169,18 +169,18 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 | `index.html` | All screens and HUD elements, script order. |
 | `css/style.css` | Menus, HUD, joystick, buttons, levels, effects (vignette, tunnel, danger, static, fade). |
 | `js/textures.js` | Procedural textures. `ATLAS` (bark, leaves, dead wood, rock) and `PROPS` (planks, rust, canvas, soot) are 2×2 atlases sharing UV rects. Also ground, bush, hand, monster skin/face, glow, road, paint, deer hide, deer crossing sign, puddle. |
-| `js/geo.js` | `Geo.part` (bake a primitive into an atlas rect), `merge`, `mat` (matrix), `prism`, `placeGlow` (draws far glows within the 40 m camera range). |
+| `js/geo.js` | `Geo.part` (bake a primitive into an atlas rect), `merge` (leaves out zero-area triangles), `mat` (matrix), `prism`, `placeGlow` (draws far glows within the 40 m camera range), `still` (a piece that never moves on its parent), `skipWhileHidden` (no matrix work while hidden). See "Keeping it fast" in section 7. |
 | `js/props.js` | Models: log, cabin, fence, car, tent. They stand on y=0 with their front facing +z. |
-| `js/world.js` | Forest generation, difficulty, logs, places, collision. Exports `World.CAMP` (fire, eye spots), `World.FINISH` (truck, road, lamp positions and zones) and `World.geometry` (the tree models, reused by the highway). `setVisible` hides the whole forest. |
+| `js/world.js` | Forest generation, difficulty, logs, places, collision. Exports `World.CAMP` (fire, eye spots), `World.FINISH` (truck, road, lamp positions and zones) and `World.geometry` (the tree models, reused by the highway). `setVisible` hides the whole forest. Only the rows that can be seen are drawn: up to `DRAW_AHEAD` (38 m) ahead, and behind you only while `setLookingBack(true)`. |
 | `js/camp.js` | The campfire scene: flames, embers, light, tent, far glow, fire loudness. |
 | `js/finish.js` | Highway, guardrail, streetlight (buzzes, far glow), the pickup with interior, hinged door, dome light, dials, headlights (`setPower`). The bonnet (`hood`, dentable) and steering wheel (`wheel`, turns) are separate meshes; the rear window is an opening. The truck's rotation order is `YXZ`. |
-| `js/highway.js` | Level 2's world, in its own frame (`root`, see Coordinates): the road and ground as vertex strips that follow the bends (`centerAt(d)`), instanced trees/posts/signs/puddles, `puddlesBetween`, the **deer** model (`hw.deer`), the **rain** (`updateRain`). |
+| `js/highway.js` | Level 2's world, in its own frame (`root`, see Coordinates): the road and ground as vertex strips that follow the bends (`centerAt(d)`), instanced trees/posts/signs/puddles, `puddlesBetween`, the **deer** model (`hw.deer`), the **rain** (`updateRain`). The woods exist twice: `ahead` (layer 1, what the windscreen can see: 22 m back to 50 m ahead) and `behind` (layer 2, what the mirror can see). |
 | `js/cab.js` | Inside the truck (children of the truck): hands and forearms on the wheel, gauges (`setGauges`), the **rear-view mirror** (a render target from a small camera looking back through the rear window, every other frame), windscreen cracks (`crack`), bonnet dents (`dent`), smoke (`setSmoke`), water and wipers (`splash`, `wipe`, `glassOnScreen`), the fogged rear window with the writing (`setFog`), tail and hazard lights. |
 | `js/drive.js` | Level 2's game: truck physics (steer, brake, drift, stall), the chase (gap, rams, lunges, side slams, glances), health and crashes, deer, puddles, blackouts, the menu scene, the start scene, the caught scene, the end. Created by game.js with a `ctx` object of shared things. |
 | `js/monster.js` | The creature. Modes: `run`, `still`, `reach`, `lunge`, `crawl` (on all fours, Level 2). Stop-motion posing; `place(..., eyeBoost)`; `setModeOnce`. |
 | `js/audio.js` | `Sfx.*`: all sounds. Level 1: steps, heartbeat, breathing, crickets, fire, snap, click, jump/land, hit, caught, door, slam, drop, key, crank, engine, thump, passing truck. Level 2: `setEngine` (revs), `sputter`/`engineCatch` (choking), `setRoad`, `setScreech`, `crunch` (its hits), `scrape`, `deerHit`, `hooves`, `splash`, `wiper`, `setRain`, `setRadio`, `tick` (hazards), `rev`. |
 | `js/art.js` | Pixel art for menus: `Art.lockedCard`, `Art.lockedMini` (chains and padlocks). The steering wheel and brake icons are pixel SVGs in `index.html`. |
-| `js/game.js` | Everything else: renderer, input, states, player, chaser, effects, camp intro, truck scenes, menus, levels, saving. `useLevel(n)` switches between the two levels' worlds. |
+| `js/game.js` | Everything else: renderer, input, states, player, chaser, effects, camp intro, truck scenes, menus, levels, saving. `useLevel(n)` switches between the two levels' worlds (and their lights). `ui.set(el, prop, value)` / `ui.text(el, value)` write the screen effects and HUD only when they change. |
 | `lib/three.min.js` | three.js **r128** (an older version; the code uses its API, e.g. `outputEncoding`). Do not upgrade casually. |
 
 **Coordinates**
@@ -243,7 +243,7 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 - **Function names clash in game.js** (one big closure). A `shake()` helper once broke the whole game because `shake` was already a variable. Check names before adding.
 - **Eyes on the monster face** z-fought at distance. They sit slightly in front, with `polygonOffset`.
 - Big flat meshes need subdivisions, or vertex lighting makes them black or wrong.
-- **Lights:** adding or removing lights at runtime forces shader recompiles (stutter). Create all lights up front and change their `intensity` instead (truck dome, headlights).
+- **Lights:** adding or removing lights at runtime forces shader recompiles (stutter). Create all lights up front and change their `intensity` instead (truck dome, headlights). The only exception is `useLevel`, which shows each level's own lights (see "Keeping it fast").
 - **Audio** only starts after the first tap (a browser rule). The first view of the start screen is silent; this is expected.
 - **The path must always stay open.** Anything new placed in the forest must respect `free()`, `isReserved()` and the log row, and must not trap the player.
 - **The jump trigger** is joystick-up crossing 0.6, re-armed below 0.3. Don't go back to speed-based flick detection.
@@ -252,9 +252,23 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 - **Hands outside the truck:** hide them (`cab.showHands(false)`) when the truck is seen from outside (the level card picture).
 - **Monster modes:** use `setModeOnce` when calling every frame (`setMode` restarts the stop-motion timer, so calling it every frame makes it move smoothly).
 - **The wet-glass blur** is a CSS `backdrop-filter` on `#wet`, clipped to the windscreen's screen polygon above the dashboard. It blurs the canvas behind it, so keep the polygon off the wheel and hands.
+- **The dome light in Level 2** belongs to the drive (lunges, the caught scene). `finish.update` only drives it from the door in Level 1; it used to switch it off every frame, so it never showed while driving.
 - **Testing in headless Chromium is slow** (software WebGL): the game clock runs slower than real time, so wait for game conditions (`state()`, `drive.debug.now()`), then `freeze(true)` to take the screenshot on that exact frame. A small "test driver" that sets `__game.stick.x` towards `hw.centerAt(d + 12) + 1.8` keeps the truck on the road.
 
 ---
+
+### Keeping it fast (phones)
+The game was optimized for phones (see the commits "Smoother: ..."). Level 2 draws the world twice (windscreen and mirror), so it matters most there. Keep these rules when adding things:
+- **Every light costs on every surface, even at intensity 0.** `useLevel` hides the other level's lights (Level 1: no tail/hazard lights; Level 2: no flashlight, no campfire). A new light: create it at startup and add it to that per-level list.
+- **Everything is made ready while loading.** At startup the game runs `renderer.compile` once for each level's lights, so no surface is prepared the first time it shows up (that froze the picture for a moment). Anything new must exist in the scene at startup (hidden is fine) so the warm-up covers it.
+- **Which camera sees which trees:** the highway's woods are on layer 1 (windscreen) and layer 2 (mirror). The main camera sees layers 0+1, the mirror camera 0+2. A new camera that should see the highway's trees from outside enables both (like the level card picture).
+- **The forest draws the trees behind you only while looking back** (`world.setLookingBack`, set every frame from the state: any state but `play`, or a look-back). Anything new that turns the camera around during a run must count as looking back.
+- **One piece per material:** pieces that never move apart are baked together with `Geo.part` + `Geo.merge` (each separate mesh is a draw call, and the mirror doubles them). Empty instanced lists are hidden (`visible = count > 0`).
+- **`Geo.still(obj)`** for pieces that never move on their parent (set position/rotation first). Never use it on something that moves later: it would stay put. **`Geo.skipWhileHidden(root)`** for things hidden for long stretches (the monsters, the deer, the camp, the cab).
+- **Screen effects and HUD** (`danger`, `tunnel`, `fade`, `static`, distance, the button ring, the wheel icon, the wet-glass clip) are written through `ui.set` / `ui.text`. Writing them directly would leave its memory of what's showing out of date.
+- **Sounds set every frame** (`setRoad`, `setBreathing`, `setRain`, ...) skip values that didn't change, so calling them every frame is fine.
+- **Fast screens:** frames shorter than 9.5 ms are skipped, so 120 Hz phones run at 60 fps (90 Hz screens keep every frame).
+- Measured on a desktop in headless Chromium (phones are several times slower, but the proportions hold): Level 2 driving went from 1.8 ms to about 1.3 ms of processing per frame and from 163,000 to 83,000 points drawn; Level 1 from 1.0 to 0.75 ms and 93,000 to 54,000 points.
 
 ## 8. Open items and ideas
 
@@ -289,5 +303,10 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
   - Use the browser's multi-touch (CDP `Input.dispatchTouchEvent`) to test the joystick and FASTER button together.
   - Clear or set `localStorage` first to test as a new player (`behindyou.escaped` = `1` unlocks Level 2, `behindyou.lastLevel` = `2` opens on its menu).
   - Also check Level 1 after changing shared things (the truck in `finish.js`, the monster, `game.js`): the escape scene and the endless start use the same truck.
+- **Checking that a speed-up changes nothing on screen:** run the old and the new version side by side in headless Chromium with everything made repeatable, and compare the 3D picture pixel by pixel:
+  - seed `Math.random` (give three.js its own sequence, it uses random numbers for object ids, and the campfire too, which only animates in Level 1), switch off `AudioContext`, and feed the game a virtual 60 fps clock (`performance.now` and the timestamps of `requestAnimationFrame`);
+  - script the moments to check by frame number with `window.__game` (menu, intro, running, looking back, the truck; the highway's menu, driving, deer, lunges, damage, caught), and read the pixels with `gl.readPixels` right after the game's frame;
+  - run long stretches with a picture every few frames, on a tall (400×820) and a wide (900×420) screen. The screen effects are page elements on top of the canvas, so check those separately (read their styles while playing).
+- **Measuring:** count draw calls and points by wrapping the WebGL draw functions, time the frame callback, and use the Chrome profiler (`Profiler` over CDP) to see where the time goes.
 - **Showing a playable build in chat:** publish the page as an Artifact. The page file is a `<title>`, a `<link rel="stylesheet" href="css/style.css">`, and the `<body>` of index.html; pass every `css/`, `lib/` and `js/` file as supporting files at the same paths. Each play page keeps its own saved progress (separate from the owner's phone). The owner asks to delete old play pages when done.
 - Keep `README.md` updated (how to play and the file list) when controls or files change.

@@ -133,6 +133,7 @@
     let pathX = 0, pathV = 0;
     let dirty = true;
     let lookingBack = true;  // (then the trees behind you are drawn too)
+    let shown = true;        // (the whole forest is hidden while you drive the highway)
     // logs and abandoned places
     let nextLogD = 0, nextPlaceD = 0, lastPlace = '';
     let reserved = [];      // areas kept free for a place: {x0, x1, d0, d1, side}
@@ -376,9 +377,10 @@
       }
       names.forEach(name => {
         const m = kinds[name].mesh;
-        // (only send the graphics card the part that's in use)
+        // (only send the graphics card the part that's in use; with none of them around, don't draw it at all)
         m.instanceMatrix.updateRange.count = m.count * 16;
         m.instanceMatrix.needsUpdate = true;
+        m.visible = shown && m.count > 0;
       });
     }
 
@@ -496,7 +498,8 @@
 
     // hide the whole forest (on the highway it's somewhere far behind you)
     function setVisible(v) {
-      Object.keys(kinds).forEach(name => { kinds[name].mesh.visible = v; });
+      shown = v;
+      Object.keys(kinds).forEach(name => { kinds[name].mesh.visible = v && kinds[name].mesh.count > 0; });
       ground.visible = v;
     }
 

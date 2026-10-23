@@ -35,6 +35,18 @@
     lvlHighway: $('lvlHighway'), highwayShot: $('highwayShot'), unlockNote3: $('unlockNote3'), escapedSub: $('escapedSub')
   };
   for (let i = 0; i < 10; i++) ui.healthBar.appendChild(document.createElement('i'));
+  // Only touch the page when something on it actually changes: every change makes the browser work
+  // the page out again. (Every change to these goes through here, so it always knows what's showing.)
+  const shown = new Map();
+  function changed(el, key, v) {
+    let s = shown.get(el);
+    if (!s) shown.set(el, s = {});
+    if (s[key] === v) return false;
+    s[key] = v;
+    return true;
+  }
+  ui.set = (el, prop, v) => { if (changed(el, prop, v)) el.style[prop] = v; };
+  ui.text = (el, v) => { if (changed(el, '#text', v)) el.textContent = v; };
 
   // ---- renderer / scene ----------------------------------------------------
   const canvas = $('game');
@@ -468,7 +480,7 @@
     finish.door.rotation.y = endless ? finish.DOOR_OPEN : 0;
     finish.car.rotation.z = 0;
     finish.setPower(0, 0);
-    ui.fade.style.opacity = '0';
+    ui.set(ui.fade, 'opacity', '0');
     ui.toast.classList.add('hidden');
     jumpBuffer = 0; jumpArmed = true;
     seat = 1; lightOn = false; vmRaise = 1; introT = -1;
@@ -486,13 +498,13 @@
     watcherTimer = 40 + Math.random() * 30; watcherActive = false;
     chaser.root.visible = false;
     watcher.root.visible = false;
-    ui.tunnel.style.transform = 'scale(2.4)';
+    ui.set(ui.tunnel, 'transform', 'scale(2.4)');
     camera.fov = baseFov;
     camera.updateProjectionMatrix();
     world.reset(mode, player.d);
     world.update(player.d);
-    ui.staticCanvas.style.opacity = '0';
-    ui.danger.style.opacity = '0';
+    ui.set(ui.staticCanvas, 'opacity', '0');
+    ui.set(ui.danger, 'opacity', '0');
   }
 
   // The camp scene, timed in seconds from the tap:
@@ -689,8 +701,8 @@
     watcher.root.visible = false;
     watcherActive = false;
     ui.hint.classList.add('hidden');
-    ui.danger.style.opacity = '0';
-    ui.tunnel.style.transform = 'scale(2.4)';
+    ui.set(ui.danger, 'opacity', '0');
+    ui.set(ui.tunnel, 'transform', 'scale(2.4)');
     camera.fov = baseFov;
     camera.updateProjectionMatrix();
     Sfx.setBreathing(0.9);
@@ -751,7 +763,7 @@
     vmRaise = 1;
     torchOnSeat();
     handParts.visible = false;
-    ui.fade.style.opacity = '1';
+    ui.set(ui.fade, 'opacity', '1');
     Sfx.engineStop(0.2);
     Sfx.setAmbience(0.6);
     Sfx.startBreathing();
@@ -863,8 +875,8 @@
     flashlight.intensity = 2.4 * (0.97 + Math.random() * 0.03);
     lensMat.color.setScalar(1);
 
-    if (sc.fadeOut) ui.fade.style.opacity = smooth(sc.fadeOut[0], sc.fadeOut[1], carT).toFixed(3);
-    if (sc.fadeIn) ui.fade.style.opacity = (1 - smooth(sc.fadeIn[0], sc.fadeIn[1], carT)).toFixed(3);
+    if (sc.fadeOut) ui.set(ui.fade, 'opacity', smooth(sc.fadeOut[0], sc.fadeOut[1], carT).toFixed(3));
+    if (sc.fadeIn) ui.set(ui.fade, 'opacity', (1 - smooth(sc.fadeIn[0], sc.fadeIn[1], carT)).toFixed(3));
     beatPulse = Math.max(0, beatPulse - dt * 4);
 
     if (carT >= sc.end) {
@@ -914,7 +926,7 @@
     }
     setState('over');
     chaser.root.visible = false;
-    ui.tunnel.style.transform = 'scale(2.4)';
+    ui.set(ui.tunnel, 'transform', 'scale(2.4)');
     Sfx.setAmbience(0.6);
   }
 
@@ -1147,16 +1159,16 @@
 
     // panic: red edges, tunnel vision and the view pulsing with your heartbeat
     const danger = Math.max(0, (close - 0.35) / 0.65);
-    ui.danger.style.opacity = (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3);
+    ui.set(ui.danger, 'opacity', (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3));
     const tunnel = 2.4 - Math.pow(close, 1.5) * 1.35 - beatPulse * close * 0.12;
-    ui.tunnel.style.transform = 'scale(' + tunnel.toFixed(3) + ')';
+    ui.set(ui.tunnel, 'transform', 'scale(' + tunnel.toFixed(3) + ')');
     camera.fov = baseFov * (1 - close * 0.06 + beatPulse * close * 0.025);
     camera.updateProjectionMatrix();
 
     // HUD
-    ui.distance.textContent = runDistance() + ' m';
+    ui.text(ui.distance, runDistance() + ' m');
     // stamina: the ring around the sprint button
-    ui.sprintRing.style.strokeDashoffset = (SPRINT_RING * (1 - player.stamina)).toFixed(1);
+    ui.set(ui.sprintRing, 'strokeDashoffset', (SPRINT_RING * (1 - player.stamina)).toFixed(1));
     ui.sprint.classList.toggle('low', player.stamina < 0.25 || player.tired);
     ui.sprint.classList.toggle('tired', player.tired);
   }
@@ -1326,6 +1338,8 @@
       hw.root.add(finish.car);
       finish.car.add(body);
       drive.setupLights();
+      // (the flashlight you tossed on the seat would otherwise stay floating where the truck was parked)
+      restoreTorch();
       viewmodel.visible = false;
       lightOn = false;
       flashlight.intensity = 0;
@@ -1347,10 +1361,15 @@
   let last = performance.now();
   let paused = false;
   const viewer = new THREE.Vector3();
+  // On a very fast screen (120 times a second and more) every other frame is skipped, so the game runs
+  // at about 60 there as everywhere else: plenty for its choppy look, half the work, a cooler phone.
+  // (A 90 Hz screen still gets every frame.)
+  const SHORTEST_FRAME = 9.5; // ms
 
   function frame(now) {
     requestAnimationFrame(frame);
     if (paused) { last = now; return; }
+    if (now - last < SHORTEST_FRAME) return;
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     stateTime += dt;
@@ -1368,12 +1387,12 @@
       chaser.place(player.x, -0.45, -player.d + 1.75, player.x, -player.d);
       chaser.update(dt);
       if (stateTime > 0.55) {
-        ui.staticCanvas.style.opacity = '1';
+        ui.set(ui.staticCanvas, 'opacity', '1');
         drawStatic();
       }
       if (stateTime > 1.6) {
-        ui.staticCanvas.style.opacity = '0';
-        ui.danger.style.opacity = '0';
+        ui.set(ui.staticCanvas, 'opacity', '0');
+        ui.set(ui.danger, 'opacity', '0');
         finishCaught();
       }
     } else if (state === 'menu') {
@@ -1392,8 +1411,8 @@
     body.getWorldPosition(viewer);
     finish.update(dt, viewer, level === 1);
 
-    // the campfire: still burning back there after you've run
-    camp.update(dt, viewer);
+    // the campfire: still burning back there after you've run (on the highway it's far out of sight)
+    if (level === 1) camp.update(dt, viewer);
     Sfx.setFire(state === 'caught' || state === 'over' ? 0 : camp.loudness(viewer));
     crackleTimer -= dt;
     if (crackleTimer <= 0) {
