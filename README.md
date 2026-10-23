@@ -1,7 +1,7 @@
 # Behind You
 
-A one-handed, first-person endless runner. You're running through a dark forest at night with only a flashlight.
-Something is chasing you. You will never see what it is.
+A first-person horror game in two levels. First you run through a dark forest at night with only a flashlight,
+then you drive your truck down an empty highway. Something is chasing you all the way. You will never see what it is.
 
 ## How to play
 
@@ -14,7 +14,15 @@ You start sitting by your campfire. Tap (or press any key) to look around: somet
 The gear button on the start screen shows the controls. After you're caught, RUN AGAIN puts you straight back on your feet,
 MAIN MENU takes you back to the fire.
 
+**Level 2: The Highway** (unlocks when you escape The Forest: NEXT LEVEL, or its card under LEVELS).
+You start parked on the roadside in the rain, right where The Forest ended. BEHIND YOU is written in the fogged-up
+rear window: you read it in the rear-view mirror. Tap to drive. 9000 meters of dark road; it follows on all fours,
+in your mirror. Brake for deer, splash through puddles (the wipers clear the glass), keep the truck in one piece.
+Once you've played The Highway, the game opens there instead of at the campfire.
+
 Open `index.html` in any browser (phone or computer). No install is needed.
+
+### The Forest
 
 - **Phone:** put your thumb anywhere on the screen and drag (the joystick).
   - left / right: steer
@@ -23,6 +31,21 @@ Open `index.html` in any browser (phone or computer). No install is needed.
   - hold the **FASTER** button (bottom right) with your other thumb to sprint. The ring around it is your stamina.
     Sprint it nearly empty and you're out of breath: no sprinting, and slower than your normal run until half of it is back.
 - **Computer:** arrow keys or WASD, Space or up to jump, Shift to sprint.
+
+### The Highway
+
+- **Phone:** drag your thumb anywhere: the steering wheel (left / right). Hold **BRAKE** (bottom right) with your other thumb.
+  The longer you hold it, the harder it brakes (and the back slides a little). Let go and the truck speeds up again by itself.
+  The ring around BRAKE fills while you hold it: hold it too long and the engine chokes and stutters for a moment.
+- **Computer:** arrow keys or A / D to steer; Space, Down, S or Shift to brake.
+
+Every time you slow down, it gains on you. Brake too much and it rams the back of the truck. Sometimes it surges for no
+reason at all: from behind, or up alongside a door. The bar under the meters is the truck's health: trees, deer and its
+attacks crack the windscreen, dent the bonnet and make the engine smoke. If the truck gives out, it gets you.
+Crash three times in a few seconds and it gets you too. Now and then the headlights die for a moment.
+For now the road just fades to black at 9000 m: the ending (and Level 3) are still to come.
+
+### More about The Forest
 
 Hitting a tree makes you stumble and lets it get closer. Listen to your heartbeat and breathing.
 When the screen edges turn red, the view narrows and the flashlight starts flickering, it's right behind you.
@@ -47,6 +70,9 @@ There is always an open way through the trees, even when the forest gets thick.
 - `js/world.js`: the forest (trees, logs, places, the always-open path, collisions)
 - `js/camp.js`: the campfire you start at
 - `js/finish.js`: the end of the level: the highway, the streetlight, your truck
+- `js/highway.js`: Level 2's world: the bending road, the woods, posts, signs, puddles, the deer, the rain
+- `js/cab.js`: inside the truck: your hands on the wheel, gauges, rear-view mirror, wipers, cracks, dents, smoke
+- `js/drive.js`: Level 2's game: driving, braking, the chase, damage, deer, the menu scene and the end
 - `js/art.js`: pixel art for the menus (the chained, padlocked levels)
 - `js/monster.js`: the thing that follows you
 - `js/game.js`: the player, flashlight, the chaser, controls and main loop

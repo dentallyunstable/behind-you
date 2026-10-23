@@ -14,6 +14,8 @@
     const skin = new THREE.MeshBasicMaterial({ map: tex.hand, color: 0x4e4239 });
     const sleeve = new THREE.MeshBasicMaterial({ color: 0x151a23 });
     const hands = [];
+    const arms = new THREE.Group();
+    root.add(arms);
     const onWheel = new THREE.Group();
     onWheel.visible = false;
     finish.wheel.add(onWheel);
@@ -33,7 +35,7 @@
       const armGeo = new THREE.BoxGeometry(0.06, 0.06, 1);
       armGeo.translate(0, 0, 0.5);
       const arm = new THREE.Mesh(armGeo, sleeve);
-      root.add(arm);
+      arms.add(arm);
       hands.push({ grip: grip, arm: arm, elbow: new THREE.Vector3(h.elbow[0], h.elbow[1], h.elbow[2]) });
     });
     const tmp = new THREE.Vector3();
@@ -113,7 +115,7 @@
     root.add(stalk);
     // (it sits further back than the mirror, so the rear window fills it)
     const mirrorCam = new THREE.PerspectiveCamera(20, 0.3 / 0.094, 0.1, 50);
-    mirrorCam.position.set(0.06, 1.64, 0.28);
+    mirrorCam.position.set(0, 1.64, 0.28);
     mirrorCam.rotation.set(-0.06, 0, 0); // looking back (the truck's -z), a little down
     car.add(mirrorCam);
     let mirrorTick = 0;
@@ -285,6 +287,46 @@
       return 'polygon(' + pts.join(',') + ')';
     }
 
+    // ---- the rear window, fogged up, with BEHIND YOU written in it --------------------
+    // Written from outside, with a finger: from inside it reads backwards... and the right way round in the mirror.
+    const fc = document.createElement('canvas');
+    fc.width = 192;
+    fc.height = 60;
+    const fx = fc.getContext('2d', { willReadFrequently: true });
+    function fogUp() {
+      fx.clearRect(0, 0, fc.width, fc.height);
+      for (let y = 0; y < fc.height; y++) {
+        for (let x = 0; x < fc.width; x++) {
+          const v = 120 + Math.random() * 40 | 0;
+          fx.fillStyle = 'rgba(' + v + ',' + v + ',' + (v + 8) + ',' + (0.72 + Math.random() * 0.2).toFixed(2) + ')';
+          fx.fillRect(x, y, 1, 1);
+        }
+      }
+      fx.save();
+      fx.globalCompositeOperation = 'destination-out';
+      fx.translate(fc.width, 0);
+      fx.scale(-1, 1); // backwards, seen from in here
+      fx.fillStyle = '#000';
+      // (small enough that all of it shows in the mirror)
+      fx.font = 'bold 15px "Courier New", Courier, monospace';
+      fx.textAlign = 'center';
+      fx.textBaseline = 'middle';
+      fx.fillText('BEHIND YOU', fc.width / 2, 23);
+      // water running down from the letters
+      for (let i = 0; i < 24; i++) fx.fillRect(52 + Math.random() * 90 | 0, 28 + Math.random() * 4 | 0, 1, 4 + Math.random() * 14 | 0);
+      fx.restore();
+      fogTex.needsUpdate = true;
+    }
+    const fogTex = new THREE.CanvasTexture(fc);
+    fogTex.magFilter = THREE.NearestFilter;
+    fogTex.minFilter = THREE.LinearFilter;
+    fogTex.generateMipmaps = false;
+    const fogMat = new THREE.MeshLambertMaterial({ map: fogTex, transparent: true, depthWrite: false, emissive: 0x2a2a2c, opacity: 0 });
+    const rearFog = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.4), fogMat);
+    rearFog.position.set(0, 1.5, -0.4);
+    root.add(rearFog);
+    fogUp();
+
     // ---- dents in the bonnet ------------------------------------------------------
     const hood = finish.hood;
     const hpos = hood.geometry.attributes.position, hcol = hood.geometry.attributes.color;
@@ -383,8 +425,19 @@
         root.visible = v;
         onWheel.visible = v;
       },
+      // your hands and arms (hidden when the truck is seen from outside)
+      showHands: function (v) {
+        arms.visible = v;
+        onWheel.visible = v && root.visible;
+      },
       tail: tail,
       renderMirror: renderMirror,
+      // the rear window's fog: 1 fogged up (with the writing), 0 clear
+      setFog: function (v) {
+        fogMat.opacity = v;
+        rearFog.visible = v > 0.01;
+      },
+      fogUp: fogUp,
       splash: splash,
       wipe: wipe,
       wiping: () => wipeT >= 0,

@@ -263,6 +263,37 @@
     const deer = makeDeer(tex);
     root.add(deer.root);
 
+    // ---- rain: still falling where you parked ------------------------------------------
+    const RAIN = 280;
+    const rainPos = new Float32Array(RAIN * 6);
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+    const rainMat = new THREE.LineBasicMaterial({ color: 0x8a96a6, transparent: true, opacity: 0 });
+    const rain = new THREE.LineSegments(rainGeo, rainMat);
+    rain.frustumCulled = false;
+    rain.visible = false;
+    root.add(rain);
+    const drops = [];
+    for (let i = 0; i < RAIN; i++) drops.push({ x: 0, y: Math.random() * 9, z: 0, fresh: true });
+    // amount 0..1, around the point (x, d)
+    function updateRain(dt, x, d, amount) {
+      rainMat.opacity = 0.4 * amount;
+      rain.visible = amount > 0.01;
+      if (!rain.visible) return;
+      for (let i = 0; i < RAIN; i++) {
+        const p = drops[i];
+        p.y -= 15 * dt;
+        if (p.fresh || p.y < 0 || Math.abs(p.x - x) > 14 || Math.abs(-p.z - d) > 16) {
+          if (!p.fresh) p.y = 8 + Math.random();
+          p.fresh = false;
+          p.x = x + (Math.random() * 2 - 1) * 14;
+          p.z = -d + (Math.random() * 2 - 1.3) * 16;
+        }
+        rainPos.set([p.x, p.y, p.z, p.x + 0.03, p.y + 0.55, p.z], i * 6);
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+    }
+
     return {
       root: root,
       reset: reset,
@@ -270,6 +301,7 @@
       centerAt: centerAt,
       slopeAt: slopeAt,
       puddlesBetween: puddlesBetween,
+      updateRain: updateRain,
       deer: deer,
       difficulty: difficulty,
       LENGTH: LENGTH,

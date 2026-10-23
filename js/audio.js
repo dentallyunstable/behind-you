@@ -12,6 +12,7 @@
   let fireGain = null, fireLevel = 0;
   let engine = null;
   let roadGain = null, roadFilter = null, screechGain = null, screechFilter = null;
+  let rainGain = null, radioGain = null;
 
   function init() {
     if (ctx) {
@@ -345,6 +346,58 @@
       roadGain.gain.setTargetAtTime(speed * 0.09 + rough * 0.22, t, 0.1);
       roadFilter.frequency.setTargetAtTime(160 + speed * 260 + rough * 500, t, 0.1);
       if (rough > 0 && Math.random() < rough * 0.15) noise(0.08, 'lowpass', 200, 1, 0.3 * rough);
+    },
+    // rain drumming on the cab roof (0..1)
+    setRain: function (v) {
+      if (!ctx) return;
+      if (!rainGain) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = 2600;
+        f.Q.value = 0.5;
+        rainGain = ctx.createGain();
+        rainGain.gain.value = 0;
+        src.connect(f);
+        f.connect(rainGain);
+        rainGain.connect(master);
+        src.start();
+      }
+      rainGain.gain.setTargetAtTime(v * 0.07, now(), 0.4);
+      // a few heavier drops on the roof
+      if (v > 0.05 && Math.random() < 0.3) noise(0.02, 'bandpass', 1200 + Math.random() * 1500, 2, 0.05 * v, (Math.random() - 0.5) * 0.8);
+    },
+    // the radio, on a dead station: hiss and crackle (0..1)
+    setRadio: function (v) {
+      if (!ctx) return;
+      if (!radioGain) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.value = 1700;
+        f.Q.value = 1.2;
+        radioGain = ctx.createGain();
+        radioGain.gain.value = 0;
+        src.connect(f);
+        f.connect(radioGain);
+        radioGain.connect(master);
+        src.start();
+      }
+      radioGain.gain.setTargetAtTime(v * 0.035, now(), 0.05);
+      if (v > 0.05 && Math.random() < 0.08) noise(0.03, 'highpass', 3000, 1, 0.06 * v);
+    },
+    // the hazard lights' relay: tick... tock
+    tick: function (on) {
+      noise(0.012, 'bandpass', on ? 2600 : 2000, 4, 0.12);
+    },
+    // flooring it
+    rev: function () {
+      tone(45, 110, 0.9, 0.3, 'sawtooth');
+      noise(0.6, 'lowpass', 500, 1, 0.25);
     },
     // tyres screeching under hard braking (0..1)
     setScreech: function (v) {

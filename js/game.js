@@ -27,11 +27,12 @@
     settings: $('settings'), settingsBtn: $('settingsBtn'), settingsClose: $('settingsClose'),
     againBtn: $('againBtn'), menuBtn: $('menuBtn'), fade: $('fade'), toast: $('toast'),
     levels: $('levels'), levelsBtn: $('levelsBtn'), levelsClose: $('levelsClose'),
-    lvlForest: $('lvlForest'), unlockNote: $('unlockNote'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
+    lvlForest: $('lvlForest'), lvlEndless: $('lvlEndless'), forestShot: $('forestShot'),
     escaped: $('escaped'), nextBtn: $('nextBtn'), comingSoon: $('comingSoon'),
     endlessBtn: $('endlessBtn'), escMenuBtn: $('escMenuBtn'),
     danger: $('danger'), tunnel: $('tunnel'), staticCanvas: $('static'), hint: $('hint'),
-    healthBar: $('healthBar'), wheelArt: $('wheelArt'), wet: $('wet')
+    healthBar: $('healthBar'), wheelArt: $('wheelArt'), wet: $('wet'),
+    lvlHighway: $('lvlHighway'), highwayShot: $('highwayShot'), unlockNote3: $('unlockNote3'), escapedSub: $('escapedSub')
   };
   for (let i = 0; i < 10; i++) ui.healthBar.appendChild(document.createElement('i'));
 
@@ -256,7 +257,7 @@
       if (e.code === 'Space' || e.code === 'Enter') runAgain();
       else if (e.code === 'Escape' || e.code === 'KeyM') toMenu();
     } else if (state === 'escaped' && stateTime > 0.8) {
-      if (e.code === 'Space' || e.code === 'Enter') startEndless();
+      if ((e.code === 'Space' || e.code === 'Enter') && level === 1) startEndless();
       else if (e.code === 'Escape' || e.code === 'KeyM') toMenu();
     } else if (e.code === 'Space') {
       requestJump();
@@ -281,35 +282,52 @@
   ui.menuBtn.addEventListener('click', () => { if (state === 'over') toMenu(); });
 
   // levels
-  let shotTaken = false;
   function showLevels(open) {
     ui.levels.classList.toggle('hidden', !open);
     if (!open) return;
-    if (!shotTaken) { snapshotCamp(ui.forestShot); shotTaken = true; }
     ui.lvlEndless.classList.toggle('locked', !endlessUnlocked);
-    // the next level: tell the player how to unlock it (once they have, it just isn't made yet)
-    ui.unlockNote.textContent = endlessUnlocked ? 'Coming soon' : 'Reach 2000 m in The Forest to unlock';
+    // escaping The Forest unlocks The Highway
+    ui.lvlHighway.classList.toggle('locked', !endlessUnlocked);
+    // the level after it: tell the player how to unlock it (once they have, it just isn't made yet)
+    ui.unlockNote3.textContent = flag('escaped2') ? 'Coming soon' : 'Reach ' + Highway.LENGTH + ' m on The Highway to unlock';
   }
   ui.levelsBtn.addEventListener('click', () => { if (state === 'menu') showLevels(true); });
   ui.levelsClose.addEventListener('click', () => showLevels(false));
   ui.lvlForest.addEventListener('click', e => {
     if (e.target.closest('#lvlEndless') || state !== 'menu') return;
     showLevels(false);
+    if (level !== 1) toLevel1Menu();
     startIntro();
+  });
+  ui.lvlHighway.addEventListener('click', () => {
+    if (!endlessUnlocked) { shakeEl(ui.lvlHighway); return; }
+    if (state !== 'menu') return;
+    showLevels(false);
+    if (level !== 2) useLevel(2);
+    drive.startIntro();
   });
   ui.lvlEndless.addEventListener('click', () => {
     if (!endlessUnlocked) { shakeEl(ui.lvlEndless); return; }
     showLevels(false);
+    if (level !== 1) toLevel1Menu();
     startEndless();
   });
   document.querySelectorAll('.level-card.locked').forEach(card => {
     Art.lockedCard(card.querySelector('canvas'));
     card.addEventListener('click', () => shakeEl(card));
   });
+  Art.lockedCard(ui.lvlHighway.querySelector('.lock-cover canvas'));
   Art.lockedMini(ui.lvlEndless.querySelector('canvas'));
 
   // the end of the level
   ui.nextBtn.addEventListener('click', () => {
+    if (state !== 'escaped') return;
+    if (level === 1) {
+      // on to The Highway: back in the truck where you left it
+      useLevel(2);
+      drive.toMenu();
+      return;
+    }
     shakeEl(ui.nextBtn);
     ui.comingSoon.classList.add('show');
   });
@@ -318,11 +336,29 @@
 
   // The Forest's picture on its level card: the camp, rendered small, from the side.
   function snapshotCamp(target) {
-    const w = target.width, h = target.height;
-    const rt = new THREE.WebGLRenderTarget(w, h);
-    const cam = new THREE.PerspectiveCamera(32, w / h, 0.05, 40);
+    const cam = new THREE.PerspectiveCamera(32, target.width / target.height, 0.05, 40);
     cam.position.set(1.4, 1.2, -0.6);
     cam.lookAt(0.9, 0.5, camp.fireZ + 1.8); // fire and tent on the right, the name on the left
+    snapshot(target, cam);
+  }
+  // The Highway's: your truck on the roadside in the rain, under the streetlight, hazards on.
+  function snapshotHighway(target) {
+    useLevel(2);
+    drive.dress();
+    const cam = new THREE.PerspectiveCamera(30, target.width / target.height, 0.05, 60);
+    hw.root.add(cam);
+    cam.position.set(3.4, 1.2, -6.6);
+    cam.lookAt(hw.root.localToWorld(new THREE.Vector3(-0.9, 1.5, 0.5)));
+    cab.showHands(false); // (nobody in the driver's seat yet)
+    snapshot(target, cam);
+    cab.showHands(true);
+    hw.root.remove(cam);
+    useLevel(1);
+  }
+  // render a picture for a level card
+  function snapshot(target, cam) {
+    const w = target.width, h = target.height;
+    const rt = new THREE.WebGLRenderTarget(w, h);
     const vmWasVisible = viewmodel.visible;
     viewmodel.visible = false;
     renderer.setRenderTarget(rt);
@@ -401,6 +437,10 @@
   function setState(s) {
     state = s;
     stateTime = 0;
+    // the next time the game opens, it opens where you last played
+    if (s === 'menu' || s === 'intro') {
+      try { localStorage.setItem('behindyou.lastLevel', String(level)); } catch (e) { /* ignore */ }
+    }
     ui.menu.classList.toggle('hidden', s !== 'menu' && s !== 'intro');
     ui.menu.classList.toggle('fade', s === 'intro');
     ui.over.classList.toggle('hidden', s !== 'over');
@@ -463,6 +503,13 @@
   let introLook1 = 0, introLook2 = 0;
 
   function startIntro() {
+    if (level === 2) {
+      placeStickIdle();
+      showSettings(false);
+      showLevels(false);
+      drive.startIntro();
+      return;
+    }
     if (mode !== 'level') resetRun('level');
     placeStickIdle();
     showSettings(false);
@@ -545,12 +592,42 @@
 
   // Back to sitting by the fire.
   function toMenu() {
-    if (level === 2) useLevel(1);
+    if (level === 2) {
+      drive.toMenu();
+      return;
+    }
     resetRun('level');
     setState('menu');
     Sfx.stopBreathing();
     Sfx.engineStop(0.5);
     Sfx.setAmbience(0.9);
+  }
+
+  // from The Highway back to sitting by the fire
+  function toLevel1Menu() {
+    useLevel(1);
+    Sfx.engineStop(0.5);
+    resetRun('level');
+    setState('menu');
+  }
+
+  // the end of The Highway (for now: it fades out, and that's it)
+  function finishHighway() {
+    flag('escaped2', true);
+    if (Highway.LENGTH > best2) {
+      best2 = Highway.LENGTH;
+      try { localStorage.setItem('behindyou.best2', String(best2)); } catch (e) { /* ignore */ }
+    }
+    showEscaped();
+  }
+
+  // the YOU ESCAPED screen, for whichever level you just finished
+  function showEscaped() {
+    ui.escapedSub.textContent = level === 2 ? 'The Highway \u00b7 ' + Highway.LENGTH + ' m' : 'The Forest \u00b7 ' + F.length + ' m';
+    // after The Forest the next level is open; after The Highway it isn't made yet
+    ui.nextBtn.classList.toggle('locked-btn', level === 2);
+    ui.comingSoon.classList.remove('show');
+    setState('escaped');
   }
 
   // ---- the truck ---------------------------------------------------------------
@@ -654,8 +731,7 @@
     flag('escaped', true);
     endlessUnlocked = true;
     if (F.length > best) { best = F.length; saveBest(best); }
-    ui.comingSoon.classList.remove('show');
-    setState('escaped');
+    showEscaped();
     Sfx.engineStop(2.5);
     Sfx.stopBreathing();
   }
@@ -1213,7 +1289,8 @@
     setState: setState, state: () => state, stateTime: () => stateTime, baseFov: () => baseFov2,
     drawStatic: drawStatic, flag: flag,
     releaseInput: () => { stick.id = null; stick.x = stick.y = 0; releaseSprint(); },
-    onCaught: dist => finishCaught(dist)
+    onCaught: dist => finishCaught(dist),
+    onEscaped: () => finishHighway()
   });
 
   // Which level's world is out there. The highway starts where your truck was parked,
@@ -1231,8 +1308,13 @@
     camera.far = FOG[n][2];
     camera.fov = n === 2 ? baseFov2 : baseFov;
     camera.updateProjectionMatrix();
-    if (n === 2) ui.hint.textContent = touchScreen ? 'HOLD BRAKE' : 'HOLD SPACE TO BRAKE';
-    else ui.hint.textContent = touchScreen ? 'PUSH UP TO JUMP' : 'SPACE TO JUMP';
+    if (n === 2) {
+      ui.hint.textContent = touchScreen ? 'HOLD BRAKE' : 'HOLD SPACE TO BRAKE';
+      ui.lookText.textContent = touchScreen ? 'Tap to drive.' : 'Press any key to drive.';
+    } else {
+      ui.hint.textContent = touchScreen ? 'PUSH UP TO JUMP' : 'SPACE TO JUMP';
+      ui.lookText.textContent = touchScreen ? 'Tap to look around.' : 'Press any key to look around.';
+    }
     if (n === 2) {
       hw.root.add(finish.car);
       finish.car.add(body);
@@ -1334,8 +1416,20 @@
     }
   });
 
-  setState('menu');
+  // you open the game where you last played
+  let lastLevel = '1';
+  try { lastLevel = localStorage.getItem('behindyou.lastLevel') || '1'; } catch (e) { /* ignore */ }
+  state = 'menu';
   resetRun();
+  // the pictures on the level cards
+  snapshotHighway(ui.highwayShot);
+  snapshotCamp(ui.forestShot);
+  if (lastLevel === '2' && endlessUnlocked) {
+    useLevel(2);
+    drive.toMenu();
+  } else {
+    setState('menu');
+  }
   requestAnimationFrame(frame);
 
   // handy for testing from the browser console

@@ -53,7 +53,7 @@
 
 <div id="settings" class="overlay solid panel hidden">
   <h2>CONTROLS</h2>
-  <div class="controls">
+  <div class="controls l1">
     <h3>PHONE</h3>
     <p>Drag your thumb anywhere: the joystick</p>
     <p>&larr; &rarr; steer<br>&uarr; push up to jump<br>&darr; pull down to slow down</p>
@@ -62,6 +62,19 @@
     <p>&larr; &rarr; or A D: steer<br>&uarr; W or Space: jump<br>&darr; or S: slow down<br>Shift: sprint</p>
     <h3>STAMINA</h3>
     <p>The ring around FASTER is your stamina. Use it all up and you'll be out of breath: slower than your normal run until you catch your breath.</p>
+    <p class="small">Headphones recommended</p>
+  </div>
+  <div class="controls l2">
+    <h3>PHONE</h3>
+    <p>Drag your thumb anywhere: the steering wheel</p>
+    <p>&larr; &rarr; steer</p>
+    <p>Hold <b>BRAKE</b> (bottom right) with your other thumb. The longer you hold it, the harder it brakes. Let go and the truck speeds up again.</p>
+    <h3>COMPUTER</h3>
+    <p>&larr; &rarr; or A D: steer<br>Space, &darr;, S or Shift: brake</p>
+    <h3>THE BRAKE</h3>
+    <p>The ring around BRAKE fills while you hold it. Hold it too long and the engine chokes: the truck stutters along for a moment. And every time you slow down, it gains on you.</p>
+    <h3>THE TRUCK</h3>
+    <p>The bar under the meters is the truck. Trees, deer and its attacks all hurt it. If the truck gives out, it gets you. Crash three times in a few seconds and it gets you too.</p>
     <p class="small">Headphones recommended</p>
   </div>
   <button id="settingsClose" class="btn">BACK</button>
@@ -75,8 +88,12 @@
       <div class="level-label">Level 1: <b>The Forest</b></div>
       <button id="lvlEndless" class="mini locked"><canvas class="art" width="48" height="16"></canvas><span>ENDLESS</span></button>
     </div>
-    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas><div id="unlockNote" class="unlock-note">Reach 2000 m in The Forest to unlock</div></div>
-    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
+    <div class="level-card" id="lvlHighway">
+      <canvas id="highwayShot" class="art" width="192" height="60"></canvas>
+      <div class="level-label">Level 2: <b>The Highway</b></div>
+      <div class="lock-cover"><canvas class="art" width="192" height="60"></canvas><div class="unlock-note">Reach 2000 m in The Forest to unlock</div></div>
+    </div>
+    <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas><div id="unlockNote3" class="unlock-note">Reach 9000 m on The Highway to unlock</div></div>
     <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
     <div class="level-card locked"><canvas class="art" width="192" height="60"></canvas></div>
   </div>
@@ -85,11 +102,11 @@
 
 <div id="escaped" class="overlay solid panel hidden">
   <h1>YOU ESCAPED</h1>
-  <p class="sub">The Forest &middot; 2000 m</p>
+  <p id="escapedSub" class="sub">The Forest &middot; 2000 m</p>
   <button id="nextBtn" class="btn locked-btn"><svg class="lock" viewBox="0 0 5 7" shape-rendering="crispEdges"><path d="M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM0 2h1v1h-1zM4 2h1v1h-1zM0 3h5v1h-5zM0 4h2v1h-2zM3 4h2v1h-2zM0 5h2v1h-2zM3 5h2v1h-2zM0 6h5v1h-5z"/></svg> NEXT LEVEL</button>
   <p id="comingSoon" class="small">COMING SOON</p>
   <div class="buttons">
-    <button id="endlessBtn" class="btn">ENDLESS</button>
+    <button id="endlessBtn" class="btn l1">ENDLESS</button>
     <button id="escMenuBtn" class="btn">MAIN MENU</button>
   </div>
 </div>

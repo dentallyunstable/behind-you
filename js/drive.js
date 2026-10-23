@@ -7,7 +7,7 @@
   // ---- tuning ------------------------------------------------------------------
   const SEAT_EYE = [0.42, 1.58, 0.1];
   const CRUISE_MIN = 17, CRUISE_MAX = 26; // the truck's own speed in m/s (about 60 to 95 km/h)
-  const ACCEL = 3.2;            // how quickly it picks up speed again (m/s per second)
+  const ACCEL = 4.2;            // how quickly it picks up speed again (m/s per second)
   const STEER = 0.34;           // full lock: sideways speed = this x your speed
   const BRAKE_RAMP = 0.9;       // seconds of holding until the brakes bite their hardest
   const STALL_AFTER = 2.6;      // hold the brake longer than this and the engine chokes...
@@ -17,12 +17,12 @@
   const BRAKE_RING = 276.5;     // length of the ring around the brake button
   const START_GAP = 16;         // meters between it and your tailgate when you set off
   const MAX_GAP = 30;
-  const CHASER_PACE = 0.965;    // its speed, compared with the truck's own cruising speed
+  const CHASER_PACE = 0.95;     // its speed, compared with the truck's own cruising speed
   const LUNGE_SPEED = 13;       // a sudden surge: it gains this much faster (m/s)
   const REAR = 2.7;             // from the middle of the truck to its back bumper
   // damage: the truck's health is 1 when it's in one piece
   const HIT_REAR = 0.1;         // it rams you because you braked too much
-  const HIT_LUNGE = 0.07;       // it comes out of nowhere
+  const HIT_LUNGE = 0.05;       // it comes out of nowhere
   const HIT_SIDE = 0.08;        // it slams into a door
   const HIT_WALL = 0.06;        // you scrape into the trees
   const HIT_DEER = 0.15;        // you hit a deer
@@ -55,6 +55,11 @@
     let deerTimer = 0, deerS = null, learnedBrake = ctx.flag('braked');
     let wetT = -1, shownWet = -1;
     let blackoutTimer = 0, blackoutT = -1, blackoutOff = 1.5;
+    // parked in the rain (the menu), the moment you set off, and the end of the road
+    let framing = 0;              // 1: looking up at the mirror (the menu), 0: down the road
+    let rainAmount = 0, fogAmount = 0;
+    let hazardT = 0, hazardOn = false, wipeTimer = 0, eyesTimer = 0, eyesT = -1, idleAcc = 0;
+    let introT = -1, escapeT = -1;
 
     function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
     function smooth(a, b, t) {
@@ -85,7 +90,7 @@
       truck.health = 1; truck.wallCooldown = 0; truck.wallFree = 9;
       shake = 0; rumble = 0; pitch = 0; roll = 0; jolt = 0; blur = 0;
       runTime = 0;
-      gap = START_GAP; chaserX = 0; lunge = null; lungeTimer = 30 + Math.random() * 15;
+      gap = START_GAP; chaserX = 0; lunge = null; lungeTimer = 45 + Math.random() * 15;
       crashes = [];
       glanceT = -1; glanceAmount = 0;
       closeNow = 0; beatPulse = 0; heartTimer = 0; flicker = 0;
@@ -95,6 +100,13 @@
       deer.root.visible = false;
       wetT = -1;
       blackoutT = -1; blackoutTimer = 35 + Math.random() * 20;
+      framing = 0; rainAmount = 0; fogAmount = 0;
+      cab.setFog(0);
+      cab.setHazard(false);
+      hazardOn = false;
+      hw.updateRain(0, 0, 0, 0);
+      introT = -1; escapeT = -1; eyesT = -1;
+      finish.dome.intensity = 0;
       ui.hint.classList.add('hidden');
       cab.repair();
       cab.setSmoke(0);
@@ -107,6 +119,7 @@
       ui.staticCanvas.style.opacity = '0';
       ui.danger.style.opacity = '0';
       ui.tunnel.style.transform = 'scale(2.4)';
+      ui.fade.style.opacity = '0';
     }
 
     // ---- the truck's health ---------------------------------------------------------
@@ -204,6 +217,12 @@
       rumble = Math.abs(off) > GRASS ? Math.min(1, truck.speed / 12) : 0;
 
       hw.update(truck.d);
+      // driving out of the rain; the rear window clears
+      rainAmount = Math.max(0, rainAmount - dt * 0.22);
+      fogAmount = Math.max(0, fogAmount - dt * 0.35);
+      weather(dt);
+      // the end of the road (for now)
+      if (truck.d >= hw.LENGTH) { startEscape(); return; }
       chase(dt, cruise);
       updateDeer(dt);
       updateBlackout(dt);
@@ -259,12 +278,14 @@
     function chase(dt, cruise) {
       // it waits a moment, then keeps up a little slower than the truck at full speed:
       // every time you brake, it gains on you
-      if (runTime > 1.5) gap += (truck.speed - cruise * CHASER_PACE) * dt;
+      // (when you set off, it picks up speed with you)
+      const its = Math.min(cruise * CHASER_PACE, 3 + runTime * ACCEL * 0.95);
+      gap += (truck.speed - its) * dt;
       gap = Math.min(gap, MAX_GAP);
 
       // now and then, for no reason, it surges: from behind, or up alongside a door
       lungeTimer -= dt;
-      if (!lunge && lungeTimer <= 0 && runTime > 25) startLunge(Math.random() < 0.5 ? 0 : (Math.random() < 0.6 ? -1 : 1));
+      if (!lunge && lungeTimer <= 0 && runTime > 40) startLunge(Math.random() < 0.5 ? 0 : (Math.random() < 0.6 ? -1 : 1));
       if (lunge) {
         if (lunge.phase === 'close') {
           gap -= LUNGE_SPEED * dt;
@@ -331,7 +352,7 @@
       truck.speed += 3;
       gap = 7 + Math.random() * 3;
       lunge = null;
-      lungeTimer = 35 + Math.random() * 25;
+      lungeTimer = 45 + Math.random() * 30;
     }
 
     function sideHit(side) {
@@ -346,7 +367,7 @@
       roll = -side * 0.06;
       gap = 9 + Math.random() * 3;
       lunge = null;
-      lungeTimer = 35 + Math.random() * 25;
+      lungeTimer = 45 + Math.random() * 30;
     }
 
     // you can't help looking out of the side window
@@ -525,7 +546,10 @@
       ui.danger.style.opacity = (danger * 0.9 * (0.75 + 0.25 * beatPulse)).toFixed(3);
       const tunnel = 2.4 - Math.pow(close, 1.5) * 1.35 - beatPulse * close * 0.12;
       ui.tunnel.style.transform = 'scale(' + tunnel.toFixed(3) + ')';
-      camera.fov = ctx.baseFov() * (1 - close * 0.06 + beatPulse * close * 0.025);
+      // (in the menu: zoomed in on the mirror)
+      const menuFov = clamp(2 * Math.atan(Math.tan(13 * Math.PI / 180) / camera.aspect) * 180 / Math.PI, 12, 48);
+      const driveFov = ctx.baseFov() * (1 - close * 0.06 + beatPulse * close * 0.025);
+      camera.fov = driveFov + (menuFov - driveFov) * framing;
       camera.updateProjectionMatrix();
       // a hard knock blurs everything for a moment
       blur = Math.max(0, blur - dt);
@@ -543,14 +567,21 @@
       if (caughtT < 1.75) updateGlance(dt);
       const tr = shake * 0.05 + rumble * 0.012 + (truck.stall > 0 ? 0.006 : 0) + truck.brake * truck.speed * 0.0004 +
         closeNow * closeNow * 0.006;
+      const now = performance.now() / 1000;
+      const breathe = Math.sin(now * 1.6) * 0.004 * framing;
       body.position.set(
         SEAT_EYE[0] + (Math.random() - 0.5) * tr,
-        SEAT_EYE[1] + (Math.random() - 0.5) * tr,
+        SEAT_EYE[1] + (Math.random() - 0.5) * tr + breathe,
         SEAT_EYE[2] - jolt * 0.06
       );
-      // you lean with the road a little, and look down it (or out of a side window)
+      // you lean with the road a little, and look down it (or out of a side window, or up at the mirror)
       const glanceYaw = -glanceSide * 1.38 * glanceAmount;
-      body.rotation.set(-0.05 - truck.brake * 0.02 + jolt * 0.08, Math.PI - truck.steer * 0.06 + glanceYaw, -truck.steer * 0.015);
+      const pitchNow = -0.05 - truck.brake * 0.02 + jolt * 0.08;
+      body.rotation.set(
+        pitchNow + (0.142 + Math.sin(now * 0.4) * 0.006 - pitchNow) * framing,
+        Math.PI - truck.steer * 0.06 + glanceYaw + (-0.123 + Math.sin(now * 0.3) * 0.008) * framing,
+        -truck.steer * 0.015
+      );
       camera.rotation.set(0, 0, 0);
       // the wheel turns with your steering (and catches the slide when the back steps out)
       finish.wheel.rotation.z = truck.steer * 1.7 - truck.drift * 2;
@@ -558,7 +589,7 @@
       ui.wheelArt.style.transform = 'rotate(' + (truck.steer * 110).toFixed(1) + 'deg)';
 
       // the headlights and the dials
-      let lights = (truck.stall > 0 ? (Math.random() < 0.35 ? 0.3 : 0.85) : 1) * lightLevel();
+      let lights = (truck.stall > 0 ? (Math.random() < 0.35 ? 0.3 : 0.85) : 1) * lightLevel() * (ctx.state() === 'menu' ? 0.7 : 1);
       if (flicker > 0) lights *= Math.random() < 0.5 ? 0.05 : 0.4;
       if (caughtT >= 0) lights *= 1 - smooth(0.5, 1.3, caughtT) * (Math.random() < 0.3 ? 0.5 : 1);
       finish.beams.intensity = 2.6 * lights;
@@ -627,8 +658,116 @@
       return Math.max(0, Math.floor(truck.d));
     }
 
-    // ---- states ---------------------------------------------------------------------
-    // straight into driving (for now: no scene before it)
+    // ---- the menu: parked on the roadside in the rain, engine running, hazards ticking ---
+    function toMenu() {
+      reset();
+      ctx.setState('menu');
+      framing = 1;
+      rainAmount = 1;
+      fogAmount = 1;
+      cab.fogUp();
+      cab.setFog(1);
+      hazardT = 0;
+      wipeTimer = 2.5;
+      eyesTimer = 5 + Math.random() * 4;
+      Sfx.engineStart(0);
+      Sfx.setAmbience(0);
+      Sfx.stopBreathing();
+    }
+
+    // rain on the glass and the roof, the wipers now and then, the radio hissing
+    function weather(dt) {
+      hw.updateRain(dt, truck.x, truck.d, rainAmount);
+      Sfx.setRain(rainAmount);
+      cab.setFog(fogAmount);
+      if (rainAmount > 0.3 && Math.random() < dt * 4 * rainAmount) cab.splash(0.015);
+      if (rainAmount > 0.3) {
+        wipeTimer -= dt;
+        if (wipeTimer <= 0) { cab.wipe(1); wipeTimer = 5 + Math.random() * 2; }
+      }
+    }
+
+    function updateMenu(dt) {
+      weather(dt);
+      Sfx.setRadio(ctx.state() === 'menu' ? 1 : 0);
+      // the engine idling
+      idleAcc -= dt;
+      if (idleAcc <= 0) {
+        idleAcc = 0.25;
+        Sfx.engineStart(0);
+        Sfx.setEngine(0.04, 0);
+      }
+      // hazards: tick... tock
+      if (ctx.state() === 'menu') {
+        hazardT += dt;
+        const on = hazardT % 0.8 < 0.4;
+        if (on !== hazardOn) { hazardOn = on; cab.setHazard(on); Sfx.tick(on); }
+      }
+      // now and then, far back in the mirror: two eyes. Then nothing.
+      if (eyesT < 0) {
+        eyesTimer -= dt;
+        if (eyesTimer <= 0 && ctx.state() === 'menu') { eyesT = 0; chaser.setMode('still'); }
+      } else {
+        eyesT += dt;
+        chaser.root.visible = eyesT < 1.3;
+        chaser.place(truck.x + 0.6, 0, -(truck.d - REAR - 24), truck.x, -truck.d, 3);
+        chaser.update(dt);
+        if (eyesT >= 1.3) { eyesT = -1; eyesTimer = 8 + Math.random() * 7; }
+      }
+      cab.tail.intensity = 1.0;
+    }
+
+    // how it looks parked in the rain, from outside (for the picture on its level card)
+    function dress() {
+      reset();
+      framing = 1;
+      rainAmount = 1;
+      cab.setFog(1);
+      cab.setHazard(true);
+      for (let i = 0; i < 3; i++) hw.updateRain(0.25, truck.x, truck.d, 1);
+      updateView(0);
+    }
+
+    // ---- tap: the radio cuts out, you look down the road... and it's in the mirror. Floor it.
+    function startIntro() {
+      if (ctx.state() !== 'menu') toMenu();
+      ctx.setState('intro');
+      introT = 0;
+      eyesT = -1;
+      chaser.root.visible = false;
+      Sfx.setRadio(0);
+      Sfx.click();
+      Sfx.startBreathing();
+      Sfx.setBreathing(0.4);
+    }
+
+    function updateIntro(dt) {
+      const t0 = introT;
+      introT += dt;
+      const at = time => t0 < time && introT >= time;
+      updateMenu(dt);
+      framing = 1 - smooth(0.2, 1.3, introT);
+      if (at(0.45)) { cab.setHazard(false); hazardOn = false; Sfx.tick(false); }
+      // it's there, back in the dark... and then it's coming
+      if (introT > 0.7) {
+        if (at(0.7)) { chaser.setMode('still'); Sfx.heartbeat(0.5); beatPulse = 1; }
+        if (at(1.25)) { chaser.setMode('crawl'); Sfx.heartbeat(0.65); beatPulse = 1; Sfx.setBreathing(0.8); }
+        gap = introT < 1.25 ? 20 : 20 - (introT - 1.25) * 7;
+        placeChaser(dt);
+      }
+      if (at(1.6)) { Sfx.rev(); shake = 0.3; }
+      if (introT >= 2.1) startDriving();
+    }
+
+    function startDriving() {
+      ctx.setState('play');
+      introT = -1;
+      truck.speed = 3;
+      runTime = 0;
+      chaser.setMode('crawl');
+    }
+
+    // straight into driving (after it caught you): no scene before it
     function startPlay() {
       reset();
       ctx.setState('play');
@@ -636,12 +775,49 @@
       chaser.setMode('crawl');
       Sfx.engineStart(0);
       Sfx.setAmbience(0);
+      Sfx.setRadio(0);
+    }
+
+    // ---- the end of the road: it falls back, everything goes black ----------------------
+    function startEscape() {
+      ctx.setState('escape');
+      escapeT = 0;
+      lunge = null;
+      deerS = null;
+      deer.root.visible = false;
+      ui.hint.classList.add('hidden');
+      ctx.releaseInput();
+    }
+    function updateEscape(dt) {
+      escapeT += dt;
+      const steer = clamp((hw.centerAt(truck.d + 10) + 1.8 - truck.x) * 0.3 - truck.vx * 0.1, -1, 1);
+      truck.brake = 0;
+      truck.speed += (cruiseSpeed() - truck.speed) * Math.min(1, dt);
+      steerAndMove(dt, steer);
+      hw.update(truck.d);
+      gap += 12 * dt;
+      placeChaser(dt);
+      Sfx.setRoad(Math.min(1, truck.speed / CRUISE_MAX), 0);
+      Sfx.setBreathing(Math.max(0.2, 0.8 - escapeT * 0.2));
+      ui.fade.style.opacity = smooth(0.8, 3.2, escapeT).toFixed(3);
+      if (escapeT >= 3.7) {
+        escapeT = -1;
+        Sfx.engineStop(2.5);
+        Sfx.setRoad(0, 0);
+        Sfx.stopBreathing();
+        chaser.root.visible = false;
+        ctx.onEscaped();
+      }
     }
 
     function update(dt) {
       const state = ctx.state();
+      if (state === 'over' || state === 'escaped') return;
       if (state === 'play') drive(dt);
       else if (state === 'caught') updateCaught(dt);
+      else if (state === 'menu') updateMenu(dt);
+      else if (state === 'intro') updateIntro(dt);
+      else if (state === 'escape') updateEscape(dt);
       updateView(dt);
       updateWet(dt);
       effects(dt);
@@ -652,6 +828,10 @@
     function stop() {
       Sfx.setRoad(0, 0);
       Sfx.setScreech(0);
+      Sfx.setRain(0);
+      Sfx.setRadio(0);
+      hw.updateRain(0, 0, 0, 0);
+      cab.setHazard(false);
       ctx.canvas.style.filter = '';
       shownBlur = -1;
       ui.wet.classList.add('hidden');
@@ -673,6 +853,9 @@
 
     return {
       reset: reset,
+      toMenu: toMenu,
+      dress: dress,
+      startIntro: startIntro,
       startPlay: startPlay,
       update: update,
       stop: stop,
@@ -683,12 +866,13 @@
       // for testing from the console
       debug: {
         gap: v => { if (v !== undefined) gap = v; return gap; },
-        lunge: side => { lungeTimer = 0; runTime = Math.max(runTime, 26); startLunge(side || 0); },
+        lunge: side => { lungeTimer = 0; runTime = Math.max(runTime, 41); startLunge(side || 0); },
         damage: v => damage(v),
         crash: v => crash(v || 0),
         deer: () => { deerTimer = 0; blackoutT = -1; lunge = null; },
         splash: () => splash(),
         blackout: () => { blackoutTimer = 0; runTime = Math.max(runTime, 21); },
+        end: () => { truck.d = hw.LENGTH - 60; },
         deerState: () => deerS && { phase: deerS.phase, ahead: deerS.d - truck.d - FRONT, x: deerS.x - truck.x },
         now: () => ({ lunge: lunge && { phase: lunge.phase, t: lunge.t, side: lunge.side }, caughtT: caughtT, gap: gap, health: truck.health })
       }
