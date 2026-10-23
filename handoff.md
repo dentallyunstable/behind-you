@@ -217,13 +217,12 @@ History, so you don't repeat mistakes:
 
 ## 8. Open items and ideas
 
-- **The last 250 m difficulty is untested by a human.** The owner was going to try it and report too hard or too easy. Ask them.
+- **The last 250 m difficulty** was played by the owner: it feels fine, leave it.
 - **Level 2 doesn't exist yet.** NEXT LEVEL says COMING SOON. The four locked cards are placeholders. A new level needs:
   - its own world generation and finish
   - a card picture
   - unlock wiring (escape flag → next level)
   - an update to the "Reach 2000 m…" text
-- **A private test page** for an old test build that starts runs at 1800 m is still published at https://claude.ai/artifact/12Ar1eSPWUzhH2gGzZXsAg. (Its test branch "1800" has been deleted from GitHub.)
 - **Offered but not requested:**
   - a tap-to-toggle sprint for one-handed play
   - hiding the monster's faint body at the camp so only the eyes show
