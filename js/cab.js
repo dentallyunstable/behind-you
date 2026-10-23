@@ -424,6 +424,9 @@
       setVisible: function (v) {
         root.visible = v;
         onWheel.visible = v;
+        // (the lights hang off the truck itself: out of the scene when you're not driving, even switched off they cost)
+        tail.visible = v;
+        hazardLight.visible = v;
       },
       // your hands and arms (hidden when the truck is seen from outside)
       showHands: function (v) {

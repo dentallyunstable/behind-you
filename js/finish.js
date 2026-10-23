@@ -184,8 +184,9 @@
     }
 
     let acc = 0, buzz = 0;
-    function update(dt, viewer) {
-      dome.intensity = 0.9 * Math.min(1, Math.abs(door.rotation.y) / 0.5);
+    // doorLight: the dome light follows the door (while you're driving, the drive decides when it's on)
+    function update(dt, viewer, doorLight) {
+      if (doorLight) dome.intensity = 0.9 * Math.min(1, Math.abs(door.rotation.y) / 0.5);
       // the old lamp buzzes and dips now and then
       acc += dt;
       if (acc > 1 / 12) {

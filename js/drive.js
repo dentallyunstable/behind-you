@@ -605,6 +605,7 @@
       ctx.setState('caught');
       caughtT = 0;
       lunge = null;
+      finish.dome.intensity = 0;
       glanceT = -1;
       truck.brake = 0;
       ctx.releaseInput();
@@ -783,6 +784,7 @@
       ctx.setState('escape');
       escapeT = 0;
       lunge = null;
+      finish.dome.intensity = 0;
       deerS = null;
       deer.root.visible = false;
       ui.hint.classList.add('hidden');

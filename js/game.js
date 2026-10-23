@@ -1303,6 +1303,10 @@
     hw.root.visible = n === 2;
     finish.road.visible = n === 1;
     cab.setVisible(n === 2);
+    // every light that's in the scene costs something on every surface, even switched off:
+    // keep only this level's (the campfire is far behind the highway, the flashlight lies on the seat)
+    camp.root.visible = n === 1;
+    flashlight.visible = n === 1;
     scene.fog.near = FOG[n][0];
     scene.fog.far = FOG[n][1];
     camera.far = FOG[n][2];
@@ -1383,7 +1387,7 @@
 
     // the highway lamp, glowing through the trees
     body.getWorldPosition(viewer);
-    finish.update(dt, viewer);
+    finish.update(dt, viewer, level === 1);
 
     // the campfire: still burning back there after you've run
     camp.update(dt, viewer);
@@ -1424,6 +1428,12 @@
   // the pictures on the level cards
   snapshotHighway(ui.highwayShot);
   snapshotCamp(ui.forestShot);
+  // Get every surface ready for both levels' lights now, while loading. Getting one ready the first time
+  // it shows up (the deer, the smoke, its eyes) freezes the picture for a moment on a phone.
+  useLevel(2);
+  renderer.compile(scene, camera);
+  useLevel(1);
+  renderer.compile(scene, camera);
   if (lastLevel === '2' && endlessUnlocked) {
     useLevel(2);
     drive.toMenu();
