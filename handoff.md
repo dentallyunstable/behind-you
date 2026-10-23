@@ -223,8 +223,7 @@ History, so you don't repeat mistakes:
   - a card picture
   - unlock wiring (escape flag → next level)
   - an update to the "Reach 2000 m…" text
-- **Branch cleanup:** a test branch **"1800"** (starting runs at 1800 m) may still exist on GitHub. The session couldn't delete it, so the owner was asked to delete it on GitHub.
-- **A private test page** for the 1800 build was published at https://claude.ai/artifact/12Ar1eSPWUzhH2gGzZXsAg and may still exist.
+- **A private test page** for an old test build that starts runs at 1800 m is still published at https://claude.ai/artifact/12Ar1eSPWUzhH2gGzZXsAg. (Its test branch "1800" has been deleted from GitHub.)
 - **Offered but not requested:**
   - a tap-to-toggle sprint for one-handed play
   - hiding the monster's faint body at the camp so only the eyes show
