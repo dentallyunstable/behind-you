@@ -24,30 +24,35 @@
     return cx * cx + cy * cy + cz * cz < 1e-20;
   }
 
+  // Bake parts into one geometry. Corners that are exactly the same (same place, normal and texture
+  // spot) are shared, so the graphics card works each one out once instead of once per triangle
+  // touching it (about half the work for a tree). The triangles themselves stay exactly as they were.
   function merge(parts) {
-    let n = 0;
-    parts.forEach(p => { n += p.attributes.position.count; });
-    let pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
-    let o = 0;
+    const pos = [], nor = [], uv = [], index = [];
+    const seen = new Map();
     parts.forEach(p => {
       const pa = p.attributes.position.array, na = p.attributes.normal.array, ua = p.attributes.uv.array;
       for (let t = 0; t < p.attributes.position.count; t += 3) {
         if (flat(pa, t * 3)) continue;
-        pos.set(pa.subarray(t * 3, t * 3 + 9), o * 3);
-        nor.set(na.subarray(t * 3, t * 3 + 9), o * 3);
-        uv.set(ua.subarray(t * 2, t * 2 + 6), o * 2);
-        o += 3;
+        for (let v = t; v < t + 3; v++) {
+          const key = pa[v * 3] + ',' + pa[v * 3 + 1] + ',' + pa[v * 3 + 2] + ',' + na[v * 3] + ',' + na[v * 3 + 1] + ',' + na[v * 3 + 2] + ',' + ua[v * 2] + ',' + ua[v * 2 + 1];
+          let i = seen.get(key);
+          if (i === undefined) {
+            i = pos.length / 3;
+            seen.set(key, i);
+            pos.push(pa[v * 3], pa[v * 3 + 1], pa[v * 3 + 2]);
+            nor.push(na[v * 3], na[v * 3 + 1], na[v * 3 + 2]);
+            uv.push(ua[v * 2], ua[v * 2 + 1]);
+          }
+          index.push(i);
+        }
       }
     });
-    if (o < n) {
-      pos = pos.slice(0, o * 3);
-      nor = nor.slice(0, o * 3);
-      uv = uv.slice(0, o * 2);
-    }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(index);
     return g;
   }
 

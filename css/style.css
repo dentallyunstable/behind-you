@@ -25,9 +25,13 @@ html, body {
   image-rendering: crisp-edges;
 }
 
+/* (its top and height follow the windscreen: only that band of the screen gets blurred) */
 #wet {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
   pointer-events: none;
 }
 #vignette, #tunnel, #danger, #static {

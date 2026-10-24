@@ -29,6 +29,7 @@
   const DEER_CROSS = 1.3;       // seconds for a deer to leap across the road
   const FRONT = 2.6;            // from the middle of the truck to its front bumper
   const CRASH_LIMIT = 3, CRASH_WINDOW = 8; // this many crashes in this many seconds and it gets you
+  const WET_MARGIN = 12;        // px around the windscreen that the wet-glass blur still looks at (3x its strongest blur)
 
   function create(ctx) {
     const finish = ctx.finish, cab = ctx.cab, hw = ctx.hw, body = ctx.body, camera = ctx.camera, ui = ctx.ui;
@@ -493,9 +494,22 @@
         ui.wet.style.backdropFilter = ui.wet.style.webkitBackdropFilter = 'blur(' + px + 'px)';
       }
       if (px > 0) {
-        const poly = cab.glassOnScreen(camera, window.innerWidth, window.innerHeight);
-        ui.set(ui.wet, 'clipPath', poly || 'inset(100%)');
-        ui.set(ui.wet, 'webkitClipPath', poly || 'inset(100%)');
+        // Only the band of the screen around the windscreen is blurred, not the whole screen
+        // (with a margin, so the blur near its edges still sees what's beyond them): the same picture,
+        // a much smaller area for the phone to blur.
+        const h = window.innerHeight;
+        const pts = cab.glassOnScreen(camera, window.innerWidth, h);
+        let top = 0, height = h, clip = 'inset(100%)';
+        if (pts) {
+          const y0 = Math.min(pts[0][1], pts[1][1], pts[2][1], pts[3][1]), y1 = Math.max(pts[0][1], pts[1][1], pts[2][1], pts[3][1]);
+          top = Math.max(0, Math.min(h, Math.floor(y0) - WET_MARGIN));
+          height = Math.max(0, Math.min(h, Math.ceil(y1) + WET_MARGIN) - top);
+          clip = 'polygon(' + pts.map(p => p[0].toFixed(0) + 'px ' + (p[1] - top).toFixed(0) + 'px').join(',') + ')';
+        }
+        ui.set(ui.wet, 'top', top + 'px');
+        ui.set(ui.wet, 'height', height + 'px');
+        ui.set(ui.wet, 'clipPath', clip);
+        ui.set(ui.wet, 'webkitClipPath', clip);
       }
     }
 
@@ -824,7 +838,6 @@
       updateView(dt);
       updateWet(dt);
       effects(dt);
-      cab.renderMirror(ctx.renderer, ctx.scene);
     }
 
     // leaving the level: silence the road, clear the screen

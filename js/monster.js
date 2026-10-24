@@ -70,8 +70,15 @@
     neck.add(head);
     const headGeo = new THREE.BoxGeometry(0.26, 0.4, 0.28);
     headGeo.translate(0, 0.2, 0);
-    // box sides: +x, -x, +y, -y, +z (the face), -z
-    head.add(Geo.still(new THREE.Mesh(headGeo, [skin, skin, skin, skin, faceMat, skin])));
+    // box sides: +x, -x, +y, -y, +z (the face), -z. The five plain sides are drawn together, then the face
+    // (otherwise every side is drawn on its own).
+    const sides = headGeo.index.array, order = [];
+    [0, 1, 2, 3, 5, 4].forEach(side => { for (let i = 0; i < 6; i++) order.push(sides[side * 6 + i]); });
+    headGeo.setIndex(order);
+    headGeo.clearGroups();
+    headGeo.addGroup(0, 30, 0);
+    headGeo.addGroup(30, 6, 1);
+    head.add(Geo.still(new THREE.Mesh(headGeo, [skin, faceMat])));
     const eyes = new THREE.Group();
     eyes.position.set(0, 0.25, 0.155); // a little in front of the face, so far away it never covers them
     head.add(eyes);

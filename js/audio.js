@@ -47,7 +47,8 @@
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 
     // A few pre-made cricket chirps; one plays now and then, far away.
-    for (let i = 0; i < 4; i++) chirpBufs.push(makeChirpBuffer());
+    // (made one at a time just after the first tap, not during it: the first cricket is seconds away)
+    for (let i = 0; i < 4; i++) setTimeout(() => chirpBufs.push(makeChirpBuffer()), 150 + i * 120);
     cricketGain = ctx.createGain();
     cricketGain.gain.value = 0;
     // far away = muffled
@@ -76,11 +77,25 @@
     breathGain.gain.value = 0.35;
     breathGain.connect(master);
     if (window.BREATHING_B64) {
-      const bin = atob(window.BREATHING_B64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      ctx.decodeAudioData(bytes.buffer, function (b) { breathBuf = b; }, function () {});
+      Promise.resolve(breathBytes).then(function (buf) {
+        ctx.decodeAudioData(buf || bytesFromText(), function (b) { breathBuf = b; }, function () {});
+      });
     }
+  }
+
+  // The breathing recording is stored as text; the browser turns it back into bytes in the background
+  // while the game loads (doing it here, on the first tap, made the start of the intro stutter on a phone).
+  function bytesFromText() {
+    const bin = atob(window.BREATHING_B64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+  let breathBytes = null;
+  if (window.BREATHING_B64 && window.fetch) {
+    try {
+      breathBytes = fetch('data:audio/mpeg;base64,' + window.BREATHING_B64).then(r => r.arrayBuffer()).catch(() => null);
+    } catch (e) { breathBytes = null; }
   }
 
   function now() { return ctx ? ctx.currentTime : 0; }
@@ -194,7 +209,7 @@
     },
     // A single cricket somewhere far off in the dark
     cricket: function () {
-      if (!ctx) return;
+      if (!ctx || !chirpBufs.length) return;
       const src = ctx.createBufferSource();
       src.buffer = chirpBufs[Math.floor(Math.random() * chirpBufs.length)];
       const g = ctx.createGain();

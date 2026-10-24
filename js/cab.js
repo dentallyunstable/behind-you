@@ -275,20 +275,21 @@
       }
     }
 
-    // Where the windscreen is on the screen (for blurring what's behind wet glass): a CSS polygon, or null.
-    // Only the part above the dashboard, so the wheel and your hands stay sharp.
+    // Where the windscreen is on the screen (for blurring what's behind wet glass): its four corners
+    // in screen pixels [[x, y], ...], or null. Only the part above the dashboard, so the wheel and your hands stay sharp.
     const corner = new THREE.Vector3();
     const CORNERS = [[-0.92, 1.84, 1.16], [0.92, 1.84, 1.16], [0.92, 1.4, 1.27], [-0.92, 1.4, 1.27]];
+    const onScreen = [[0, 0], [0, 0], [0, 0], [0, 0]];
     function glassOnScreen(camera, w, h) {
       car.updateMatrixWorld();
       camera.updateMatrixWorld();
-      const pts = [];
       for (let i = 0; i < 4; i++) {
         corner.set(CORNERS[i][0], CORNERS[i][1], CORNERS[i][2]).applyMatrix4(car.matrixWorld).project(camera);
         if (corner.z > 1) return null;
-        pts.push(((corner.x + 1) / 2 * w).toFixed(0) + 'px ' + ((1 - corner.y) / 2 * h).toFixed(0) + 'px');
+        onScreen[i][0] = (corner.x + 1) / 2 * w;
+        onScreen[i][1] = (1 - corner.y) / 2 * h;
       }
-      return 'polygon(' + pts.join(',') + ')';
+      return onScreen;
     }
 
     // ---- the rear window, fogged up, with BEHIND YOU written in it --------------------
@@ -435,9 +436,9 @@
       setVisible: function (v) {
         root.visible = v;
         onWheel.visible = v;
-        // (the lights hang off the truck itself: out of the scene when you're not driving, even switched off they cost)
+        // (the tail light hangs off the truck itself: out of the scene when you're not driving, even switched
+        // off it would cost. The hazard light stays: in the forest it takes the campfire's place in the set of lights.)
         tail.visible = v;
-        hazardLight.visible = v;
       },
       // your hands and arms (hidden when the truck is seen from outside)
       showHands: function (v) {

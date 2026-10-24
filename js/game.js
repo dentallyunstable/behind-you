@@ -55,6 +55,9 @@
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020306);
+  // where everything is gets worked out once per frame, right before drawing (see the main loop):
+  // the rear-view mirror and the windscreen then share it instead of each working it all out again
+  scene.autoUpdate = false;
   scene.fog = new THREE.Fog(0x020306, 3, 21);
 
   // The runner's body. The camera (head) is a child, so it can turn to look back.
@@ -358,6 +361,7 @@
   function snapshotHighway(target) {
     useLevel(2);
     drive.dress();
+    scene.updateMatrixWorld(); // (where the highway is, before aiming at the truck on it)
     const cam = new THREE.PerspectiveCamera(30, target.width / target.height, 0.05, 60);
     cam.layers.enable(1); // (from out here: the trees in front of the truck and behind it)
     cam.layers.enable(2);
@@ -376,6 +380,7 @@
     const rt = new THREE.WebGLRenderTarget(w, h);
     const vmWasVisible = viewmodel.visible;
     viewmodel.visible = false;
+    scene.updateMatrixWorld();
     renderer.setRenderTarget(rt);
     renderer.render(scene, cam);
     const pixels = new Uint8Array(w * h * 4);
@@ -1318,10 +1323,10 @@
     hw.root.visible = n === 2;
     finish.road.visible = n === 1;
     cab.setVisible(n === 2);
-    // every light that's in the scene costs something on every surface, even switched off:
-    // keep only this level's (the campfire is far behind the highway, the flashlight lies on the seat)
+    // Every light in the scene costs something on every surface, even switched off. The campfire is far
+    // behind the highway, so it's left out there. Both levels end up with the same set of lights
+    // (2 spot lights, 4 others), so every surface needs getting ready only once (see the end of the file).
     camp.root.visible = n === 1;
-    flashlight.visible = n === 1;
     scene.fog.near = FOG[n][0];
     scene.fog.far = FOG[n][1];
     camera.far = FOG[n][2];
@@ -1432,6 +1437,9 @@
     else if (state === 'play' || state === 'caught') updateCamera(dt);
     // running ahead, the trees behind you can't be seen; any other time they can
     if (level === 1) world.setLookingBack(state !== 'play' || lookT >= 0);
+    scene.updateMatrixWorld();
+    // on the highway: what's behind you, in the rear-view mirror (it uses the same frame's positions)
+    if (level === 2 && state !== 'over' && state !== 'escaped') cab.renderMirror(renderer, scene);
     renderer.render(scene, camera);
   }
 
@@ -1452,11 +1460,8 @@
   // the pictures on the level cards
   snapshotHighway(ui.highwayShot);
   snapshotCamp(ui.forestShot);
-  // Get every surface ready for both levels' lights now, while loading. Getting one ready the first time
+  // Get every surface ready now, while loading (the hidden ones too). Getting one ready the first time
   // it shows up (the deer, the smoke, its eyes) freezes the picture for a moment on a phone.
-  useLevel(2);
-  renderer.compile(scene, camera);
-  useLevel(1);
   renderer.compile(scene, camera);
   if (lastLevel === '2' && endlessUnlocked) {
     useLevel(2);

@@ -243,7 +243,7 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 - **Function names clash in game.js** (one big closure). A `shake()` helper once broke the whole game because `shake` was already a variable. Check names before adding.
 - **Eyes on the monster face** z-fought at distance. They sit slightly in front, with `polygonOffset`.
 - Big flat meshes need subdivisions, or vertex lighting makes them black or wrong.
-- **Lights:** adding or removing lights at runtime forces shader recompiles (stutter). Create all lights up front and change their `intensity` instead (truck dome, headlights). The only exception is `useLevel`, which shows each level's own lights (see "Keeping it fast").
+- **Lights:** adding or removing lights at runtime forces shader recompiles (stutter). Create all lights up front and change their `intensity` instead (truck dome, headlights). `useLevel` swaps the campfire for the tail light, keeping the number of lights the same (see "Keeping it fast").
 - **Audio** only starts after the first tap (a browser rule). The first view of the start screen is silent; this is expected.
 - **The path must always stay open.** Anything new placed in the forest must respect `free()`, `isReserved()` and the log row, and must not trap the player.
 - **The jump trigger** is joystick-up crossing 0.6, re-armed below 0.3. Don't go back to speed-based flick detection.
@@ -259,8 +259,8 @@ Unlocked by escaping The Forest (NEXT LEVEL on the YOU ESCAPED screen, or its ca
 
 ### Keeping it fast (phones)
 The game was optimized for phones (see the commits "Smoother: ..."). Level 2 draws the world twice (windscreen and mirror), so it matters most there. Keep these rules when adding things:
-- **Every light costs on every surface, even at intensity 0.** `useLevel` hides the other level's lights (Level 1: no tail/hazard lights; Level 2: no flashlight, no campfire). A new light: create it at startup and add it to that per-level list.
-- **Everything is made ready while loading.** At startup the game runs `renderer.compile` once for each level's lights, so no surface is prepared the first time it shows up (that froze the picture for a moment). Anything new must exist in the scene at startup (hidden is fine) so the warm-up covers it.
+- **Every light costs on every surface, even at intensity 0**, and every different set of lights needs every surface made ready again. Both levels use the same set: 2 spot lights (flashlight, headlights) and 4 others (Level 1: streetlight, campfire, dome, hazard switched off; Level 2: streetlight, dome, tail, hazard; the flashlight stays at 0 there). `useLevel` hides the campfire on the highway and `cab.setVisible` the tail light in the forest. A new light: create it at startup and keep both levels' sets the same size (swap one out, or switch one off).
+- **Everything is made ready while loading.** At startup the game runs `renderer.compile` once (it covers hidden things too), so no surface is prepared the first time it shows up (that froze the picture for a moment). Anything new must exist in the scene at startup (hidden is fine) so the warm-up covers it.
 - **Which camera sees which trees:** the highway's woods are on layer 1 (windscreen) and layer 2 (mirror). The main camera sees layers 0+1, the mirror camera 0+2. A new camera that should see the highway's trees from outside enables both (like the level card picture).
 - **The forest draws the trees behind you only while looking back** (`world.setLookingBack`, set every frame from the state: any state but `play`, or a look-back). Anything new that turns the camera around during a run must count as looking back.
 - **One piece per material:** pieces that never move apart are baked together with `Geo.part` + `Geo.merge` (each separate mesh is a draw call, and the mirror doubles them). Empty instanced lists are hidden (`visible = count > 0`).
@@ -268,7 +268,11 @@ The game was optimized for phones (see the commits "Smoother: ..."). Level 2 dra
 - **Screen effects and HUD** (`danger`, `tunnel`, `fade`, `static`, distance, the button ring, the wheel icon, the wet-glass clip) are written through `ui.set` / `ui.text`. Writing them directly would leave its memory of what's showing out of date.
 - **Sounds set every frame** (`setRoad`, `setBreathing`, `setRain`, ...) skip values that didn't change, so calling them every frame is fine.
 - **Fast screens:** frames shorter than 9.5 ms are skipped, so 120 Hz phones run at 60 fps (90 Hz screens keep every frame).
-- Measured on a desktop in headless Chromium (phones are several times slower, but the proportions hold): Level 2 driving went from 1.8 ms to about 1.3 ms of processing per frame and from 163,000 to 83,000 points drawn; Level 1 from 1.0 to 0.75 ms and 93,000 to 54,000 points.
+- **Where everything is gets worked out once per frame**, right before drawing (`scene.autoUpdate` is off; the main loop calls `scene.updateMatrixWorld()`, then draws the rear-view mirror, then the windscreen view). Code that reads a world position at another moment (`localToWorld`, `matrixWorld`) must update first (`updateMatrixWorld()`, or use `getWorldPosition`, which does). The level card picture of the highway needed exactly that.
+- **Models share their corners:** `Geo.merge` gives every exactly-identical corner (place, normal, texture spot) one shared point, so a tree is about 130 points instead of 430. Keep building models with `Geo.part` + `Geo.merge`.
+- **The wet-glass blur** only covers the band of the screen around the windscreen (plus a 12 px margin), not the whole screen.
+- **The breathing recording** is turned back into bytes by the browser in the background while loading (`fetch` of a `data:` address), not on the first tap; the cricket chirps are made just after the first tap.
+- Measured on a desktop in headless Chromium (phones are several times slower, but the proportions hold): Level 2 driving went from about 1.6-1.8 ms to about 1.2 ms of processing per frame, and the graphics card's point calculations from about 150,000 to 34,000 per frame; Level 1 from 0.9 to 0.7 ms and 79,000 to 19,000. The first tap's sound setup went from 20-150 ms to about 10 ms, loading from 1.4 to 1.2 s.
 
 ## 8. Open items and ideas
 
